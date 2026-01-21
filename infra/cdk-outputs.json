@@ -1,0 +1,10 @@
+{
+  "secure-vault": {
+    "VaultApiEndpointC04A081B": "https://o2lq2vwjvl.execute-api.us-east-1.amazonaws.com/prod/",
+    "FilesBucketOutput": "vault-files-235494788130-us-east-1",
+    "DatabaseEndpointOutput": "secure-vault-vaultdbd1beab0a-xthag4usu2at.cwriqyayyprk.us-east-1.rds.amazonaws.com",
+    "ApiEndpointOutput": "https://o2lq2vwjvl.execute-api.us-east-1.amazonaws.com/prod/",
+    "FrontendBucketOutput": "vault-frontend-235494788130-us-east-1",
+    "CloudFrontUrlOutput": "https://d3bzs762o2ina1.cloudfront.net"
+  }
+}

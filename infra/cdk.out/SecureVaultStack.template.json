@@ -1,0 +1,1989 @@
+{
+ "Description": "SecureVault - Zero-Knowledge Encrypted File Storage",
+ "Resources": {
+  "VaultVpcED59A070": {
+   "Type": "AWS::EC2::VPC",
+   "Properties": {
+    "CidrBlock": "10.0.0.0/16",
+    "EnableDnsHostnames": true,
+    "EnableDnsSupport": true,
+    "InstanceTenancy": "default",
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "SecureVaultStack/VaultVpc"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultVpc/Resource"
+   }
+  },
+  "VaultVpcpublicSubnet1SubnetD6621950": {
+   "Type": "AWS::EC2::Subnet",
+   "Properties": {
+    "AvailabilityZone": "us-east-1a",
+    "CidrBlock": "10.0.0.0/24",
+    "MapPublicIpOnLaunch": true,
+    "Tags": [
+     {
+      "Key": "aws-cdk:subnet-name",
+      "Value": "public"
+     },
+     {
+      "Key": "aws-cdk:subnet-type",
+      "Value": "Public"
+     },
+     {
+      "Key": "Name",
+      "Value": "SecureVaultStack/VaultVpc/publicSubnet1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "VaultVpcED59A070"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultVpc/publicSubnet1/Subnet"
+   }
+  },
+  "VaultVpcpublicSubnet1RouteTable254C21ED": {
+   "Type": "AWS::EC2::RouteTable",
+   "Properties": {
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "SecureVaultStack/VaultVpc/publicSubnet1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "VaultVpcED59A070"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultVpc/publicSubnet1/RouteTable"
+   }
+  },
+  "VaultVpcpublicSubnet1RouteTableAssociation89A6F67D": {
+   "Type": "AWS::EC2::SubnetRouteTableAssociation",
+   "Properties": {
+    "RouteTableId": {
+     "Ref": "VaultVpcpublicSubnet1RouteTable254C21ED"
+    },
+    "SubnetId": {
+     "Ref": "VaultVpcpublicSubnet1SubnetD6621950"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultVpc/publicSubnet1/RouteTableAssociation"
+   }
+  },
+  "VaultVpcpublicSubnet1DefaultRoute92868F27": {
+   "Type": "AWS::EC2::Route",
+   "Properties": {
+    "DestinationCidrBlock": "0.0.0.0/0",
+    "GatewayId": {
+     "Ref": "VaultVpcIGW57C7BFB4"
+    },
+    "RouteTableId": {
+     "Ref": "VaultVpcpublicSubnet1RouteTable254C21ED"
+    }
+   },
+   "DependsOn": [
+    "VaultVpcVPCGW0EE5C638"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultVpc/publicSubnet1/DefaultRoute"
+   }
+  },
+  "VaultVpcpublicSubnet2SubnetBBE62612": {
+   "Type": "AWS::EC2::Subnet",
+   "Properties": {
+    "AvailabilityZone": "us-east-1b",
+    "CidrBlock": "10.0.1.0/24",
+    "MapPublicIpOnLaunch": true,
+    "Tags": [
+     {
+      "Key": "aws-cdk:subnet-name",
+      "Value": "public"
+     },
+     {
+      "Key": "aws-cdk:subnet-type",
+      "Value": "Public"
+     },
+     {
+      "Key": "Name",
+      "Value": "SecureVaultStack/VaultVpc/publicSubnet2"
+     }
+    ],
+    "VpcId": {
+     "Ref": "VaultVpcED59A070"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultVpc/publicSubnet2/Subnet"
+   }
+  },
+  "VaultVpcpublicSubnet2RouteTable472E7EF9": {
+   "Type": "AWS::EC2::RouteTable",
+   "Properties": {
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "SecureVaultStack/VaultVpc/publicSubnet2"
+     }
+    ],
+    "VpcId": {
+     "Ref": "VaultVpcED59A070"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultVpc/publicSubnet2/RouteTable"
+   }
+  },
+  "VaultVpcpublicSubnet2RouteTableAssociationC4E9FD05": {
+   "Type": "AWS::EC2::SubnetRouteTableAssociation",
+   "Properties": {
+    "RouteTableId": {
+     "Ref": "VaultVpcpublicSubnet2RouteTable472E7EF9"
+    },
+    "SubnetId": {
+     "Ref": "VaultVpcpublicSubnet2SubnetBBE62612"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultVpc/publicSubnet2/RouteTableAssociation"
+   }
+  },
+  "VaultVpcpublicSubnet2DefaultRoute7F8C588D": {
+   "Type": "AWS::EC2::Route",
+   "Properties": {
+    "DestinationCidrBlock": "0.0.0.0/0",
+    "GatewayId": {
+     "Ref": "VaultVpcIGW57C7BFB4"
+    },
+    "RouteTableId": {
+     "Ref": "VaultVpcpublicSubnet2RouteTable472E7EF9"
+    }
+   },
+   "DependsOn": [
+    "VaultVpcVPCGW0EE5C638"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultVpc/publicSubnet2/DefaultRoute"
+   }
+  },
+  "VaultVpcisolatedSubnet1Subnet33FC0805": {
+   "Type": "AWS::EC2::Subnet",
+   "Properties": {
+    "AvailabilityZone": "us-east-1a",
+    "CidrBlock": "10.0.2.0/24",
+    "MapPublicIpOnLaunch": false,
+    "Tags": [
+     {
+      "Key": "aws-cdk:subnet-name",
+      "Value": "isolated"
+     },
+     {
+      "Key": "aws-cdk:subnet-type",
+      "Value": "Isolated"
+     },
+     {
+      "Key": "Name",
+      "Value": "SecureVaultStack/VaultVpc/isolatedSubnet1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "VaultVpcED59A070"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultVpc/isolatedSubnet1/Subnet"
+   }
+  },
+  "VaultVpcisolatedSubnet1RouteTableAEBFCAF1": {
+   "Type": "AWS::EC2::RouteTable",
+   "Properties": {
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "SecureVaultStack/VaultVpc/isolatedSubnet1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "VaultVpcED59A070"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultVpc/isolatedSubnet1/RouteTable"
+   }
+  },
+  "VaultVpcisolatedSubnet1RouteTableAssociationAFDC6E45": {
+   "Type": "AWS::EC2::SubnetRouteTableAssociation",
+   "Properties": {
+    "RouteTableId": {
+     "Ref": "VaultVpcisolatedSubnet1RouteTableAEBFCAF1"
+    },
+    "SubnetId": {
+     "Ref": "VaultVpcisolatedSubnet1Subnet33FC0805"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultVpc/isolatedSubnet1/RouteTableAssociation"
+   }
+  },
+  "VaultVpcisolatedSubnet2SubnetAD798414": {
+   "Type": "AWS::EC2::Subnet",
+   "Properties": {
+    "AvailabilityZone": "us-east-1b",
+    "CidrBlock": "10.0.3.0/24",
+    "MapPublicIpOnLaunch": false,
+    "Tags": [
+     {
+      "Key": "aws-cdk:subnet-name",
+      "Value": "isolated"
+     },
+     {
+      "Key": "aws-cdk:subnet-type",
+      "Value": "Isolated"
+     },
+     {
+      "Key": "Name",
+      "Value": "SecureVaultStack/VaultVpc/isolatedSubnet2"
+     }
+    ],
+    "VpcId": {
+     "Ref": "VaultVpcED59A070"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultVpc/isolatedSubnet2/Subnet"
+   }
+  },
+  "VaultVpcisolatedSubnet2RouteTableAE0875D3": {
+   "Type": "AWS::EC2::RouteTable",
+   "Properties": {
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "SecureVaultStack/VaultVpc/isolatedSubnet2"
+     }
+    ],
+    "VpcId": {
+     "Ref": "VaultVpcED59A070"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultVpc/isolatedSubnet2/RouteTable"
+   }
+  },
+  "VaultVpcisolatedSubnet2RouteTableAssociation9F956F8A": {
+   "Type": "AWS::EC2::SubnetRouteTableAssociation",
+   "Properties": {
+    "RouteTableId": {
+     "Ref": "VaultVpcisolatedSubnet2RouteTableAE0875D3"
+    },
+    "SubnetId": {
+     "Ref": "VaultVpcisolatedSubnet2SubnetAD798414"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultVpc/isolatedSubnet2/RouteTableAssociation"
+   }
+  },
+  "VaultVpcIGW57C7BFB4": {
+   "Type": "AWS::EC2::InternetGateway",
+   "Properties": {
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "SecureVaultStack/VaultVpc"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultVpc/IGW"
+   }
+  },
+  "VaultVpcVPCGW0EE5C638": {
+   "Type": "AWS::EC2::VPCGatewayAttachment",
+   "Properties": {
+    "InternetGatewayId": {
+     "Ref": "VaultVpcIGW57C7BFB4"
+    },
+    "VpcId": {
+     "Ref": "VaultVpcED59A070"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultVpc/VPCGW"
+   }
+  },
+  "VaultVpcSecretsManagerEndpoint0F16FC97": {
+   "Type": "AWS::EC2::VPCEndpoint",
+   "Properties": {
+    "PrivateDnsEnabled": true,
+    "SecurityGroupIds": [
+     {
+      "Fn::GetAtt": [
+       "VpcEndpointSg00AAF2D5",
+       "GroupId"
+      ]
+     }
+    ],
+    "ServiceName": "com.amazonaws.us-east-1.secretsmanager",
+    "SubnetIds": [
+     {
+      "Ref": "VaultVpcisolatedSubnet1Subnet33FC0805"
+     },
+     {
+      "Ref": "VaultVpcisolatedSubnet2SubnetAD798414"
+     }
+    ],
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "SecureVaultStack/VaultVpc"
+     }
+    ],
+    "VpcEndpointType": "Interface",
+    "VpcId": {
+     "Ref": "VaultVpcED59A070"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultVpc/SecretsManagerEndpoint/Resource"
+   }
+  },
+  "VaultVpcS3Endpoint50C5FF00": {
+   "Type": "AWS::EC2::VPCEndpoint",
+   "Properties": {
+    "RouteTableIds": [
+     {
+      "Ref": "VaultVpcisolatedSubnet1RouteTableAEBFCAF1"
+     },
+     {
+      "Ref": "VaultVpcisolatedSubnet2RouteTableAE0875D3"
+     }
+    ],
+    "ServiceName": {
+     "Fn::Join": [
+      "",
+      [
+       "com.amazonaws.",
+       {
+        "Ref": "AWS::Region"
+       },
+       ".s3"
+      ]
+     ]
+    },
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "SecureVaultStack/VaultVpc"
+     }
+    ],
+    "VpcEndpointType": "Gateway",
+    "VpcId": {
+     "Ref": "VaultVpcED59A070"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultVpc/S3Endpoint/Resource"
+   }
+  },
+  "LambdaSg30A6108C": {
+   "Type": "AWS::EC2::SecurityGroup",
+   "Properties": {
+    "GroupDescription": "Security group for Lambda function",
+    "SecurityGroupEgress": [
+     {
+      "CidrIp": "0.0.0.0/0",
+      "Description": "Allow all outbound traffic by default",
+      "IpProtocol": "-1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "VaultVpcED59A070"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/LambdaSg/Resource"
+   }
+  },
+  "RdsSg7F9F43B6": {
+   "Type": "AWS::EC2::SecurityGroup",
+   "Properties": {
+    "GroupDescription": "Security group for RDS",
+    "SecurityGroupEgress": [
+     {
+      "CidrIp": "255.255.255.255/32",
+      "Description": "Disallow all traffic",
+      "FromPort": 252,
+      "IpProtocol": "icmp",
+      "ToPort": 86
+     }
+    ],
+    "VpcId": {
+     "Ref": "VaultVpcED59A070"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/RdsSg/Resource"
+   }
+  },
+  "RdsSgfromSecureVaultStackLambdaSg6BEC5D1F5432D91A319B": {
+   "Type": "AWS::EC2::SecurityGroupIngress",
+   "Properties": {
+    "Description": "Allow Lambda to connect to PostgreSQL",
+    "FromPort": 5432,
+    "GroupId": {
+     "Fn::GetAtt": [
+      "RdsSg7F9F43B6",
+      "GroupId"
+     ]
+    },
+    "IpProtocol": "tcp",
+    "SourceSecurityGroupId": {
+     "Fn::GetAtt": [
+      "LambdaSg30A6108C",
+      "GroupId"
+     ]
+    },
+    "ToPort": 5432
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/RdsSg/from SecureVaultStackLambdaSg6BEC5D1F:5432"
+   }
+  },
+  "VpcEndpointSg00AAF2D5": {
+   "Type": "AWS::EC2::SecurityGroup",
+   "Properties": {
+    "GroupDescription": "Security group for VPC endpoints",
+    "SecurityGroupEgress": [
+     {
+      "CidrIp": "0.0.0.0/0",
+      "Description": "Allow all outbound traffic by default",
+      "IpProtocol": "-1"
+     }
+    ],
+    "SecurityGroupIngress": [
+     {
+      "CidrIp": {
+       "Fn::GetAtt": [
+        "VaultVpcED59A070",
+        "CidrBlock"
+       ]
+      },
+      "Description": {
+       "Fn::Join": [
+        "",
+        [
+         "from ",
+         {
+          "Fn::GetAtt": [
+           "VaultVpcED59A070",
+           "CidrBlock"
+          ]
+         },
+         ":443"
+        ]
+       ]
+      },
+      "FromPort": 443,
+      "IpProtocol": "tcp",
+      "ToPort": 443
+     }
+    ],
+    "VpcId": {
+     "Ref": "VaultVpcED59A070"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VpcEndpointSg/Resource"
+   }
+  },
+  "VpcEndpointSgfromSecureVaultStackLambdaSg6BEC5D1F4432C586725": {
+   "Type": "AWS::EC2::SecurityGroupIngress",
+   "Properties": {
+    "Description": "Allow Lambda to access VPC endpoints",
+    "FromPort": 443,
+    "GroupId": {
+     "Fn::GetAtt": [
+      "VpcEndpointSg00AAF2D5",
+      "GroupId"
+     ]
+    },
+    "IpProtocol": "tcp",
+    "SourceSecurityGroupId": {
+     "Fn::GetAtt": [
+      "LambdaSg30A6108C",
+      "GroupId"
+     ]
+    },
+    "ToPort": 443
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VpcEndpointSg/from SecureVaultStackLambdaSg6BEC5D1F:443"
+   }
+  },
+  "DbSecret685A0FA5": {
+   "Type": "AWS::SecretsManager::Secret",
+   "Properties": {
+    "Description": "SecureVault PostgreSQL credentials",
+    "GenerateSecretString": {
+     "ExcludePunctuation": true,
+     "GenerateStringKey": "password",
+     "PasswordLength": 32,
+     "SecretStringTemplate": "{\"username\":\"vaultadmin\"}"
+    },
+    "Name": "vault/db-credentials"
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/DbSecret/Resource"
+   }
+  },
+  "DbSecretAttachment0609CE05": {
+   "Type": "AWS::SecretsManager::SecretTargetAttachment",
+   "Properties": {
+    "SecretId": {
+     "Ref": "DbSecret685A0FA5"
+    },
+    "TargetId": {
+     "Ref": "VaultDbD1BEAB0A"
+    },
+    "TargetType": "AWS::RDS::DBInstance"
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/DbSecret/Attachment/Resource"
+   }
+  },
+  "VaultDbSubnetGroup4DDB5CF6": {
+   "Type": "AWS::RDS::DBSubnetGroup",
+   "Properties": {
+    "DBSubnetGroupDescription": "Subnet group for VaultDb database",
+    "SubnetIds": [
+     {
+      "Ref": "VaultVpcisolatedSubnet1Subnet33FC0805"
+     },
+     {
+      "Ref": "VaultVpcisolatedSubnet2SubnetAD798414"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultDb/SubnetGroup/Default"
+   }
+  },
+  "VaultDbD1BEAB0A": {
+   "Type": "AWS::RDS::DBInstance",
+   "Properties": {
+    "AllocatedStorage": "20",
+    "BackupRetentionPeriod": 7,
+    "CopyTagsToSnapshot": true,
+    "DBInstanceClass": "db.t3.micro",
+    "DBName": "vaultdb",
+    "DBSubnetGroupName": {
+     "Ref": "VaultDbSubnetGroup4DDB5CF6"
+    },
+    "DeleteAutomatedBackups": true,
+    "DeletionProtection": false,
+    "Engine": "postgres",
+    "EngineVersion": "15",
+    "MasterUserPassword": {
+     "Fn::Join": [
+      "",
+      [
+       "{{resolve:secretsmanager:",
+       {
+        "Ref": "DbSecret685A0FA5"
+       },
+       ":SecretString:password::}}"
+      ]
+     ]
+    },
+    "MasterUsername": {
+     "Fn::Join": [
+      "",
+      [
+       "{{resolve:secretsmanager:",
+       {
+        "Ref": "DbSecret685A0FA5"
+       },
+       ":SecretString:username::}}"
+      ]
+     ]
+    },
+    "MaxAllocatedStorage": 20,
+    "MultiAZ": false,
+    "PubliclyAccessible": false,
+    "StorageType": "gp2",
+    "VPCSecurityGroups": [
+     {
+      "Fn::GetAtt": [
+       "RdsSg7F9F43B6",
+       "GroupId"
+      ]
+     }
+    ]
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultDb/Resource"
+   }
+  },
+  "FilesBucket16450113": {
+   "Type": "AWS::S3::Bucket",
+   "Properties": {
+    "BucketEncryption": {
+     "ServerSideEncryptionConfiguration": [
+      {
+       "ServerSideEncryptionByDefault": {
+        "SSEAlgorithm": "AES256"
+       }
+      }
+     ]
+    },
+    "BucketName": "vault-files-235494788130-us-east-1",
+    "CorsConfiguration": {
+     "CorsRules": [
+      {
+       "AllowedHeaders": [
+        "*"
+       ],
+       "AllowedMethods": [
+        "GET",
+        "PUT",
+        "POST",
+        "DELETE"
+       ],
+       "AllowedOrigins": [
+        "*"
+       ],
+       "ExposedHeaders": [
+        "ETag"
+       ],
+       "MaxAge": 3000
+      }
+     ]
+    },
+    "LifecycleConfiguration": {
+     "Rules": [
+      {
+       "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 1
+       },
+       "Status": "Enabled"
+      }
+     ]
+    },
+    "PublicAccessBlockConfiguration": {
+     "BlockPublicAcls": true,
+     "BlockPublicPolicy": true,
+     "IgnorePublicAcls": true,
+     "RestrictPublicBuckets": true
+    },
+    "Tags": [
+     {
+      "Key": "aws-cdk:auto-delete-objects",
+      "Value": "true"
+     }
+    ]
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/FilesBucket/Resource"
+   }
+  },
+  "FilesBucketPolicy8CA19688": {
+   "Type": "AWS::S3::BucketPolicy",
+   "Properties": {
+    "Bucket": {
+     "Ref": "FilesBucket16450113"
+    },
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "s3:PutBucketPolicy",
+        "s3:GetBucket*",
+        "s3:List*",
+        "s3:DeleteObject*"
+       ],
+       "Effect": "Allow",
+       "Principal": {
+        "AWS": {
+         "Fn::GetAtt": [
+          "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092",
+          "Arn"
+         ]
+        }
+       },
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "FilesBucket16450113",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "FilesBucket16450113",
+             "Arn"
+            ]
+           },
+           "/*"
+          ]
+         ]
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/FilesBucket/Policy/Resource"
+   }
+  },
+  "FilesBucketAutoDeleteObjectsCustomResource1910D462": {
+   "Type": "Custom::S3AutoDeleteObjects",
+   "Properties": {
+    "ServiceToken": {
+     "Fn::GetAtt": [
+      "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F",
+      "Arn"
+     ]
+    },
+    "BucketName": {
+     "Ref": "FilesBucket16450113"
+    }
+   },
+   "DependsOn": [
+    "FilesBucketPolicy8CA19688"
+   ],
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/FilesBucket/AutoDeleteObjectsCustomResource/Default"
+   }
+  },
+  "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Version": "2012-10-17",
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ]
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Role"
+   }
+  },
+  "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": "cdk-hnb659fds-assets-235494788130-us-east-1",
+     "S3Key": "faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6.zip"
+    },
+    "Timeout": 900,
+    "MemorySize": 128,
+    "Handler": "index.handler",
+    "Role": {
+     "Fn::GetAtt": [
+      "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs22.x",
+    "Description": {
+     "Fn::Join": [
+      "",
+      [
+       "Lambda function for auto-deleting objects in ",
+       {
+        "Ref": "FilesBucket16450113"
+       },
+       " S3 bucket."
+      ]
+     ]
+    }
+   },
+   "DependsOn": [
+    "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Handler",
+    "aws:asset:path": "asset.faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6",
+    "aws:asset:property": "Code"
+   }
+  },
+  "FrontendBucketEFE2E19C": {
+   "Type": "AWS::S3::Bucket",
+   "Properties": {
+    "BucketEncryption": {
+     "ServerSideEncryptionConfiguration": [
+      {
+       "ServerSideEncryptionByDefault": {
+        "SSEAlgorithm": "AES256"
+       }
+      }
+     ]
+    },
+    "BucketName": "vault-frontend-235494788130-us-east-1",
+    "PublicAccessBlockConfiguration": {
+     "BlockPublicAcls": true,
+     "BlockPublicPolicy": true,
+     "IgnorePublicAcls": true,
+     "RestrictPublicBuckets": true
+    },
+    "Tags": [
+     {
+      "Key": "aws-cdk:auto-delete-objects",
+      "Value": "true"
+     }
+    ]
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/FrontendBucket/Resource"
+   }
+  },
+  "FrontendBucketPolicy1DFF75D9": {
+   "Type": "AWS::S3::BucketPolicy",
+   "Properties": {
+    "Bucket": {
+     "Ref": "FrontendBucketEFE2E19C"
+    },
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "s3:PutBucketPolicy",
+        "s3:GetBucket*",
+        "s3:List*",
+        "s3:DeleteObject*"
+       ],
+       "Effect": "Allow",
+       "Principal": {
+        "AWS": {
+         "Fn::GetAtt": [
+          "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092",
+          "Arn"
+         ]
+        }
+       },
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "FrontendBucketEFE2E19C",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "FrontendBucketEFE2E19C",
+             "Arn"
+            ]
+           },
+           "/*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": [
+        "s3:GetObject*",
+        "s3:GetBucket*",
+        "s3:List*"
+       ],
+       "Effect": "Allow",
+       "Principal": {
+        "CanonicalUser": {
+         "Fn::GetAtt": [
+          "OAIE1EFC67F",
+          "S3CanonicalUserId"
+         ]
+        }
+       },
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "FrontendBucketEFE2E19C",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "FrontendBucketEFE2E19C",
+             "Arn"
+            ]
+           },
+           "/*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": "s3:GetObject",
+       "Effect": "Allow",
+       "Principal": {
+        "CanonicalUser": {
+         "Fn::GetAtt": [
+          "OAIE1EFC67F",
+          "S3CanonicalUserId"
+         ]
+        }
+       },
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          {
+           "Fn::GetAtt": [
+            "FrontendBucketEFE2E19C",
+            "Arn"
+           ]
+          },
+          "/*"
+         ]
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/FrontendBucket/Policy/Resource"
+   }
+  },
+  "FrontendBucketAutoDeleteObjectsCustomResourceDB860B32": {
+   "Type": "Custom::S3AutoDeleteObjects",
+   "Properties": {
+    "ServiceToken": {
+     "Fn::GetAtt": [
+      "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F",
+      "Arn"
+     ]
+    },
+    "BucketName": {
+     "Ref": "FrontendBucketEFE2E19C"
+    }
+   },
+   "DependsOn": [
+    "FrontendBucketPolicy1DFF75D9"
+   ],
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/FrontendBucket/AutoDeleteObjectsCustomResource/Default"
+   }
+  },
+  "AppSecretFAB5164C": {
+   "Type": "AWS::SecretsManager::Secret",
+   "Properties": {
+    "Description": "SecureVault application secret key",
+    "GenerateSecretString": {
+     "ExcludePunctuation": true,
+     "PasswordLength": 64
+    },
+    "Name": "vault/app-secret"
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/AppSecret/Resource"
+   }
+  },
+  "BackendLambdaServiceRole98E4BC89": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     },
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+       ]
+      ]
+     }
+    ]
+   },
+   "DependsOn": [
+    "VaultVpcisolatedSubnet1RouteTableAssociationAFDC6E45",
+    "VaultVpcisolatedSubnet2RouteTableAssociation9F956F8A"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/BackendLambda/ServiceRole/Resource"
+   }
+  },
+  "BackendLambdaServiceRoleDefaultPolicy922C20D8": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Ref": "DbSecret685A0FA5"
+       }
+      },
+      {
+       "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Ref": "AppSecretFAB5164C"
+       }
+      },
+      {
+       "Action": [
+        "s3:GetObject*",
+        "s3:GetBucket*",
+        "s3:List*",
+        "s3:DeleteObject*",
+        "s3:PutObject",
+        "s3:PutObjectLegalHold",
+        "s3:PutObjectRetention",
+        "s3:PutObjectTagging",
+        "s3:PutObjectVersionTagging",
+        "s3:Abort*"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "FilesBucket16450113",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "FilesBucket16450113",
+             "Arn"
+            ]
+           },
+           "/*"
+          ]
+         ]
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "BackendLambdaServiceRoleDefaultPolicy922C20D8",
+    "Roles": [
+     {
+      "Ref": "BackendLambdaServiceRole98E4BC89"
+     }
+    ]
+   },
+   "DependsOn": [
+    "VaultVpcisolatedSubnet1RouteTableAssociationAFDC6E45",
+    "VaultVpcisolatedSubnet2RouteTableAssociation9F956F8A"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/BackendLambda/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "BackendLambdaD93C7B96": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": "cdk-hnb659fds-assets-235494788130-us-east-1",
+     "S3Key": "5d3b15f434ba2ddb7f86856d685e7c2cb770d1141787e38a34dc03580e2527b5.zip"
+    },
+    "Environment": {
+     "Variables": {
+      "DB_SECRET_ARN": {
+       "Ref": "DbSecret685A0FA5"
+      },
+      "DATABASE_HOST": {
+       "Fn::GetAtt": [
+        "VaultDbD1BEAB0A",
+        "Endpoint.Address"
+       ]
+      },
+      "DATABASE_NAME": "vaultdb",
+      "S3_BUCKET_NAME": {
+       "Ref": "FilesBucket16450113"
+      },
+      "USE_S3_STORAGE": "true",
+      "SECRET_KEY_ARN": {
+       "Ref": "AppSecretFAB5164C"
+      },
+      "CORS_ORIGINS": "*",
+      "DEBUG": "false"
+     }
+    },
+    "FunctionName": "vault-backend",
+    "Handler": "app.lambda_handler.handler",
+    "MemorySize": 512,
+    "Role": {
+     "Fn::GetAtt": [
+      "BackendLambdaServiceRole98E4BC89",
+      "Arn"
+     ]
+    },
+    "Runtime": "python3.11",
+    "Timeout": 30,
+    "VpcConfig": {
+     "SecurityGroupIds": [
+      {
+       "Fn::GetAtt": [
+        "LambdaSg30A6108C",
+        "GroupId"
+       ]
+      }
+     ],
+     "SubnetIds": [
+      {
+       "Ref": "VaultVpcisolatedSubnet1Subnet33FC0805"
+      },
+      {
+       "Ref": "VaultVpcisolatedSubnet2SubnetAD798414"
+      }
+     ]
+    }
+   },
+   "DependsOn": [
+    "BackendLambdaServiceRoleDefaultPolicy922C20D8",
+    "BackendLambdaServiceRole98E4BC89",
+    "VaultVpcisolatedSubnet1RouteTableAssociationAFDC6E45",
+    "VaultVpcisolatedSubnet2RouteTableAssociation9F956F8A"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/BackendLambda/Resource",
+    "aws:asset:path": "asset.5d3b15f434ba2ddb7f86856d685e7c2cb770d1141787e38a34dc03580e2527b5",
+    "aws:asset:is-bundled": true,
+    "aws:asset:property": "Code"
+   }
+  },
+  "VaultApi35042BF0": {
+   "Type": "AWS::ApiGateway::RestApi",
+   "Properties": {
+    "BinaryMediaTypes": [
+     "*/*"
+    ],
+    "Description": "Zero-Knowledge Encrypted File Vault API",
+    "Name": "SecureVault API"
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultApi/Resource"
+   }
+  },
+  "VaultApiCloudWatchRoleD4230787": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "apigateway.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
+       ]
+      ]
+     }
+    ]
+   },
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain",
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultApi/CloudWatchRole/Resource"
+   }
+  },
+  "VaultApiAccount8D7855C8": {
+   "Type": "AWS::ApiGateway::Account",
+   "Properties": {
+    "CloudWatchRoleArn": {
+     "Fn::GetAtt": [
+      "VaultApiCloudWatchRoleD4230787",
+      "Arn"
+     ]
+    }
+   },
+   "DependsOn": [
+    "VaultApi35042BF0"
+   ],
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain",
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultApi/Account"
+   }
+  },
+  "VaultApiDeployment7BEF86A58ad160aa53b44f178f5c9544161f3725": {
+   "Type": "AWS::ApiGateway::Deployment",
+   "Properties": {
+    "Description": "Zero-Knowledge Encrypted File Vault API",
+    "RestApiId": {
+     "Ref": "VaultApi35042BF0"
+    }
+   },
+   "DependsOn": [
+    "VaultApiproxyANY4E7C72B0",
+    "VaultApiproxyOPTIONS57BA36D9",
+    "VaultApiproxy78BEDF57",
+    "VaultApiANY841F2FD5",
+    "VaultApiOPTIONS3DB52DBE"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultApi/Deployment/Resource",
+    "aws:cdk:do-not-refactor": true
+   }
+  },
+  "VaultApiDeploymentStageprod036FC2AD": {
+   "Type": "AWS::ApiGateway::Stage",
+   "Properties": {
+    "DeploymentId": {
+     "Ref": "VaultApiDeployment7BEF86A58ad160aa53b44f178f5c9544161f3725"
+    },
+    "MethodSettings": [
+     {
+      "DataTraceEnabled": false,
+      "HttpMethod": "*",
+      "ResourcePath": "/*",
+      "ThrottlingBurstLimit": 100,
+      "ThrottlingRateLimit": 50
+     }
+    ],
+    "RestApiId": {
+     "Ref": "VaultApi35042BF0"
+    },
+    "StageName": "prod"
+   },
+   "DependsOn": [
+    "VaultApiAccount8D7855C8"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultApi/DeploymentStage.prod/Resource"
+   }
+  },
+  "VaultApiOPTIONS3DB52DBE": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Cookie'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'",
+        "method.response.header.Access-Control-Allow-Credentials": "'true'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true,
+       "method.response.header.Access-Control-Allow-Credentials": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Fn::GetAtt": [
+      "VaultApi35042BF0",
+      "RootResourceId"
+     ]
+    },
+    "RestApiId": {
+     "Ref": "VaultApi35042BF0"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultApi/Default/OPTIONS/Resource"
+   }
+  },
+  "VaultApiANYApiPermissionSecureVaultStackVaultApi88A17FA7ANYB7B240F2": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "BackendLambdaD93C7B96",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:us-east-1:235494788130:",
+       {
+        "Ref": "VaultApi35042BF0"
+       },
+       "/",
+       {
+        "Ref": "VaultApiDeploymentStageprod036FC2AD"
+       },
+       "/*/"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultApi/Default/ANY/ApiPermission.SecureVaultStackVaultApi88A17FA7.ANY.."
+   }
+  },
+  "VaultApiANYApiPermissionTestSecureVaultStackVaultApi88A17FA7ANYEA238883": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "BackendLambdaD93C7B96",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:us-east-1:235494788130:",
+       {
+        "Ref": "VaultApi35042BF0"
+       },
+       "/test-invoke-stage/*/"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultApi/Default/ANY/ApiPermission.Test.SecureVaultStackVaultApi88A17FA7.ANY.."
+   }
+  },
+  "VaultApiANY841F2FD5": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "ANY",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:us-east-1:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::GetAtt": [
+          "BackendLambdaD93C7B96",
+          "Arn"
+         ]
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Fn::GetAtt": [
+      "VaultApi35042BF0",
+      "RootResourceId"
+     ]
+    },
+    "RestApiId": {
+     "Ref": "VaultApi35042BF0"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultApi/Default/ANY/Resource"
+   }
+  },
+  "VaultApiproxy78BEDF57": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Fn::GetAtt": [
+      "VaultApi35042BF0",
+      "RootResourceId"
+     ]
+    },
+    "PathPart": "{proxy+}",
+    "RestApiId": {
+     "Ref": "VaultApi35042BF0"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultApi/Default/{proxy+}/Resource"
+   }
+  },
+  "VaultApiproxyOPTIONS57BA36D9": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Cookie'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'",
+        "method.response.header.Access-Control-Allow-Credentials": "'true'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true,
+       "method.response.header.Access-Control-Allow-Credentials": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Ref": "VaultApiproxy78BEDF57"
+    },
+    "RestApiId": {
+     "Ref": "VaultApi35042BF0"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultApi/Default/{proxy+}/OPTIONS/Resource"
+   }
+  },
+  "VaultApiproxyANYApiPermissionSecureVaultStackVaultApi88A17FA7ANYproxy10229BDB": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "BackendLambdaD93C7B96",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:us-east-1:235494788130:",
+       {
+        "Ref": "VaultApi35042BF0"
+       },
+       "/",
+       {
+        "Ref": "VaultApiDeploymentStageprod036FC2AD"
+       },
+       "/*/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultApi/Default/{proxy+}/ANY/ApiPermission.SecureVaultStackVaultApi88A17FA7.ANY..{proxy+}"
+   }
+  },
+  "VaultApiproxyANYApiPermissionTestSecureVaultStackVaultApi88A17FA7ANYproxy3FC9D8F2": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "BackendLambdaD93C7B96",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:us-east-1:235494788130:",
+       {
+        "Ref": "VaultApi35042BF0"
+       },
+       "/test-invoke-stage/*/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultApi/Default/{proxy+}/ANY/ApiPermission.Test.SecureVaultStackVaultApi88A17FA7.ANY..{proxy+}"
+   }
+  },
+  "VaultApiproxyANY4E7C72B0": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "ANY",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:us-east-1:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::GetAtt": [
+          "BackendLambdaD93C7B96",
+          "Arn"
+         ]
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "VaultApiproxy78BEDF57"
+    },
+    "RestApiId": {
+     "Ref": "VaultApi35042BF0"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/VaultApi/Default/{proxy+}/ANY/Resource"
+   }
+  },
+  "OAIE1EFC67F": {
+   "Type": "AWS::CloudFront::CloudFrontOriginAccessIdentity",
+   "Properties": {
+    "CloudFrontOriginAccessIdentityConfig": {
+     "Comment": "OAI for SecureVault frontend"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/OAI/Resource"
+   }
+  },
+  "Distribution830FAC52": {
+   "Type": "AWS::CloudFront::Distribution",
+   "Properties": {
+    "DistributionConfig": {
+     "CacheBehaviors": [
+      {
+       "AllowedMethods": [
+        "GET",
+        "HEAD",
+        "OPTIONS",
+        "PUT",
+        "PATCH",
+        "POST",
+        "DELETE"
+       ],
+       "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+       "Compress": true,
+       "OriginRequestPolicyId": "b689b0a8-53d0-40ab-baf2-68738e2966ac",
+       "PathPattern": "/api/*",
+       "TargetOriginId": "SecureVaultStackDistributionOrigin2101ADFBA",
+       "ViewerProtocolPolicy": "https-only"
+      }
+     ],
+     "Comment": "SecureVault CDN",
+     "CustomErrorResponses": [
+      {
+       "ErrorCachingMinTTL": 300,
+       "ErrorCode": 404,
+       "ResponseCode": 200,
+       "ResponsePagePath": "/index.html"
+      },
+      {
+       "ErrorCachingMinTTL": 300,
+       "ErrorCode": 403,
+       "ResponseCode": 200,
+       "ResponsePagePath": "/index.html"
+      }
+     ],
+     "DefaultCacheBehavior": {
+      "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
+      "Compress": true,
+      "TargetOriginId": "SecureVaultStackDistributionOrigin1C56B4E2E",
+      "ViewerProtocolPolicy": "redirect-to-https"
+     },
+     "DefaultRootObject": "index.html",
+     "Enabled": true,
+     "HttpVersion": "http2",
+     "IPV6Enabled": true,
+     "Origins": [
+      {
+       "DomainName": {
+        "Fn::GetAtt": [
+         "FrontendBucketEFE2E19C",
+         "RegionalDomainName"
+        ]
+       },
+       "Id": "SecureVaultStackDistributionOrigin1C56B4E2E",
+       "S3OriginConfig": {
+        "OriginAccessIdentity": {
+         "Fn::Join": [
+          "",
+          [
+           "origin-access-identity/cloudfront/",
+           {
+            "Ref": "OAIE1EFC67F"
+           }
+          ]
+         ]
+        }
+       }
+      },
+      {
+       "CustomOriginConfig": {
+        "OriginProtocolPolicy": "https-only",
+        "OriginSSLProtocols": [
+         "TLSv1.2"
+        ]
+       },
+       "DomainName": {
+        "Fn::Select": [
+         2,
+         {
+          "Fn::Split": [
+           "/",
+           {
+            "Fn::Join": [
+             "",
+             [
+              "https://",
+              {
+               "Ref": "VaultApi35042BF0"
+              },
+              ".execute-api.us-east-1.",
+              {
+               "Ref": "AWS::URLSuffix"
+              },
+              "/",
+              {
+               "Ref": "VaultApiDeploymentStageprod036FC2AD"
+              },
+              "/"
+             ]
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       "Id": "SecureVaultStackDistributionOrigin2101ADFBA",
+       "OriginPath": {
+        "Fn::Join": [
+         "",
+         [
+          "/",
+          {
+           "Fn::Select": [
+            3,
+            {
+             "Fn::Split": [
+              "/",
+              {
+               "Fn::Join": [
+                "",
+                [
+                 "https://",
+                 {
+                  "Ref": "VaultApi35042BF0"
+                 },
+                 ".execute-api.us-east-1.",
+                 {
+                  "Ref": "AWS::URLSuffix"
+                 },
+                 "/",
+                 {
+                  "Ref": "VaultApiDeploymentStageprod036FC2AD"
+                 },
+                 "/"
+                ]
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        ]
+       }
+      }
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/Distribution/Resource"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/31Sy27jMAz8lt4V7W6CfoCTbIscFjWSotdClhmXjS0ZEpWuYfjfl/IjNtpiTxyOhuKI1FquN/fy15368CudX1YlZrI9kdIXwdRrC3ot25dai93ZvKQ7kYasRH0KmQGK3IyONhA8q6yEmZ+5xHurURFacxOL1OFVEcx3HAyBY/zI7IdqxqZjlhDbeqvAkOh1Z6WBnf02eW3R0Ci+pWPVUnECHRxS8+hsqHuX/yUOpnDgfSc8aAfkK2VUAY7n0+ejPqIhPCtXAC1s3gSfTzrhci/bvSKVKQ8H40kZDWKYxM3NfvuFmKRsaiPbbdCXwciIhpBa3lEz02M+JFtu2IlSVVmuZPsQjJ6WssQpuAq956wTqCrZHu2w2D7ODQYU3bwq73lIMolBqBqLYQFcCp6SGvvqGSZa28BD2kNd2maa1yLjX1gMf6kHXGqD0xD9iz9AbzaPhyNKnf3bTJKxU487oUsb8rOzhmT75LDA2Jr3esi5C+86qndR8xA13yr26MlhFqbpLPOuE3Pf4MlW39n4dMR2r5iD6x/TTyw+Ek0Ra54C1YH/iLE5yHf/47q+lxv58+7dI64czwwrkMch/gOHQ23MwAMAAA=="
+   },
+   "Metadata": {
+    "aws:cdk:path": "SecureVaultStack/CDKMetadata/Default"
+   }
+  }
+ },
+ "Outputs": {
+  "VaultApiEndpointC04A081B": {
+   "Value": {
+    "Fn::Join": [
+     "",
+     [
+      "https://",
+      {
+       "Ref": "VaultApi35042BF0"
+      },
+      ".execute-api.us-east-1.",
+      {
+       "Ref": "AWS::URLSuffix"
+      },
+      "/",
+      {
+       "Ref": "VaultApiDeploymentStageprod036FC2AD"
+      },
+      "/"
+     ]
+    ]
+   }
+  },
+  "ApiEndpointOutput": {
+   "Description": "API Gateway endpoint URL",
+   "Value": {
+    "Fn::Join": [
+     "",
+     [
+      "https://",
+      {
+       "Ref": "VaultApi35042BF0"
+      },
+      ".execute-api.us-east-1.",
+      {
+       "Ref": "AWS::URLSuffix"
+      },
+      "/",
+      {
+       "Ref": "VaultApiDeploymentStageprod036FC2AD"
+      },
+      "/"
+     ]
+    ]
+   },
+   "Export": {
+    "Name": "VaultApiEndpoint"
+   }
+  },
+  "CloudFrontUrlOutput": {
+   "Description": "CloudFront distribution URL",
+   "Value": {
+    "Fn::Join": [
+     "",
+     [
+      "https://",
+      {
+       "Fn::GetAtt": [
+        "Distribution830FAC52",
+        "DomainName"
+       ]
+      }
+     ]
+    ]
+   },
+   "Export": {
+    "Name": "VaultCloudFrontUrl"
+   }
+  },
+  "FrontendBucketOutput": {
+   "Description": "Frontend S3 bucket name",
+   "Value": {
+    "Ref": "FrontendBucketEFE2E19C"
+   },
+   "Export": {
+    "Name": "VaultFrontendBucket"
+   }
+  },
+  "FilesBucketOutput": {
+   "Description": "Files S3 bucket name",
+   "Value": {
+    "Ref": "FilesBucket16450113"
+   },
+   "Export": {
+    "Name": "VaultFilesBucket"
+   }
+  },
+  "DatabaseEndpointOutput": {
+   "Description": "RDS PostgreSQL endpoint",
+   "Value": {
+    "Fn::GetAtt": [
+     "VaultDbD1BEAB0A",
+     "Endpoint.Address"
+    ]
+   },
+   "Export": {
+    "Name": "VaultDbEndpoint"
+   }
+  }
+ },
+ "Parameters": {
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}
