@@ -70,6 +70,8 @@ class FileListItem(BaseModel):
     encryptedFilename: EncryptedBlob = Field(..., description="Filename encrypted with FileKey")
     encryptedMimeType: Optional[EncryptedBlob] = Field(None, description="MIME type encrypted")
     encryptedSize: int = Field(..., description="Size of encrypted file in bytes")
+    folderId: Optional[str] = Field(None, description="Parent folder ID")
+    deletedAt: Optional[datetime] = Field(None, description="Trash timestamp (null if not trashed)")
     createdAt: datetime = Field(..., description="Upload timestamp")
     updatedAt: datetime = Field(..., description="Last update timestamp")
     
@@ -82,6 +84,8 @@ class FileListItem(BaseModel):
             encryptedFilename=EncryptedBlob(**file.encrypted_filename),
             encryptedMimeType=EncryptedBlob(**file.encrypted_mime_type) if file.encrypted_mime_type else None,
             encryptedSize=file.encrypted_size,
+            folderId=file.folder_id,
+            deletedAt=file.deleted_at,
             createdAt=file.created_at,
             updatedAt=file.updated_at,
         )

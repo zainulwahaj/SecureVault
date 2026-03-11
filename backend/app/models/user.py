@@ -76,8 +76,8 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # Relationships
-    sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
     files = relationship("File", back_populates="user", cascade="all, delete-orphan")
+    folders = relationship("Folder", back_populates="user", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<User {self.email}>"

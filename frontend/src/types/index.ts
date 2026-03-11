@@ -64,6 +64,8 @@ export interface EncryptedFileMetadata {
   encryptedFilename: EncryptedBlobData;
   encryptedMimeType: EncryptedBlobData | null;
   encryptedSize: number;
+  folderId: string | null;
+  deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -93,9 +95,52 @@ export interface DecryptedFile {
   filename: string;
   mimeType: string;
   size: number;
+  folderId: string | null;
+  deletedAt: string | null;
   createdAt: string;
   // Keep encrypted data for download
   encryptedFileKey: EncryptedBlobData;
+}
+
+// ============================================================================
+// Folder Types
+// ============================================================================
+
+export interface FolderResponse {
+  id: string;
+  parentId: string | null;
+  encryptedName: EncryptedBlobData;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FolderListResponse {
+  folders: FolderResponse[];
+  totalCount: number;
+}
+
+export interface DecryptedFolder {
+  id: string;
+  parentId: string | null;
+  name: string;
+  createdAt: string;
+}
+
+// ============================================================================
+// Version Types
+// ============================================================================
+
+export interface FileVersionInfo {
+  id: string;
+  versionNumber: number;
+  encryptedFileKey: EncryptedBlobData;
+  encryptedSize: number;
+  createdAt: string;
+}
+
+export interface FileVersionListResponse {
+  versions: FileVersionInfo[];
+  totalCount: number;
 }
 
 // ============================================================================
@@ -147,6 +192,56 @@ export interface ShareFileResponse {
   recipientId: string;
   recipientEmail: string;
   sharedAt: string;
+}
+
+// ============================================================================
+// Link Sharing Types
+// ============================================================================
+
+export interface SharedLinkResponse {
+  id: string;
+  token: string;
+  fileId: string;
+  passwordProtected: boolean;
+  expiresAt: string | null;
+  maxDownloads: number | null;
+  downloadCount: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface SharedLinkListResponse {
+  links: SharedLinkResponse[];
+  totalCount: number;
+}
+
+export interface SharedLinkPublicInfo {
+  token: string;
+  encryptedFilename: EncryptedBlobData;
+  encryptedFileKey: EncryptedBlobData;
+  passwordRequired: boolean;
+  expiresAt: string | null;
+  maxDownloads: number | null;
+  downloadCount: number;
+}
+
+// ============================================================================
+// Audit Types
+// ============================================================================
+
+export interface AuditLogEntry {
+  id: string;
+  action: string;
+  resourceType: string | null;
+  resourceId: string | null;
+  details: Record<string, unknown> | null;
+  ipAddress: string | null;
+  createdAt: string;
+}
+
+export interface AuditListResponse {
+  entries: AuditLogEntry[];
+  totalCount: number;
 }
 
 // ============================================================================

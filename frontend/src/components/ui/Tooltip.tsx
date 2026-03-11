@@ -1,98 +1,66 @@
-'use client';
+"use client"
 
-import { useState, type ReactNode } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { clsx } from 'clsx';
+import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip"
 
-export interface TooltipProps {
-  content: ReactNode;
-  children: ReactNode;
-  position?: 'top' | 'bottom' | 'left' | 'right';
-  delay?: number;
-}
+import { cn } from "@/lib/utils"
 
-const positions = {
-  top: {
-    tooltip: 'bottom-full left-1/2 -translate-x-1/2 mb-2',
-    arrow: 'top-full left-1/2 -translate-x-1/2 border-t-slate-900 dark:border-t-slate-700 border-x-transparent border-b-transparent',
-    initial: { opacity: 0, y: 5 },
-    animate: { opacity: 1, y: 0 },
-  },
-  bottom: {
-    tooltip: 'top-full left-1/2 -translate-x-1/2 mt-2',
-    arrow: 'bottom-full left-1/2 -translate-x-1/2 border-b-slate-900 dark:border-b-slate-700 border-x-transparent border-t-transparent',
-    initial: { opacity: 0, y: -5 },
-    animate: { opacity: 1, y: 0 },
-  },
-  left: {
-    tooltip: 'right-full top-1/2 -translate-y-1/2 mr-2',
-    arrow: 'left-full top-1/2 -translate-y-1/2 border-l-slate-900 dark:border-l-slate-700 border-y-transparent border-r-transparent',
-    initial: { opacity: 0, x: 5 },
-    animate: { opacity: 1, x: 0 },
-  },
-  right: {
-    tooltip: 'left-full top-1/2 -translate-y-1/2 ml-2',
-    arrow: 'right-full top-1/2 -translate-y-1/2 border-r-slate-900 dark:border-r-slate-700 border-y-transparent border-l-transparent',
-    initial: { opacity: 0, x: -5 },
-    animate: { opacity: 1, x: 0 },
-  },
-};
-
-export function Tooltip({
-  content,
-  children,
-  position = 'top',
-  delay = 200,
-}: TooltipProps) {
-  const [isVisible, setIsVisible] = useState(false);
-  const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
-
-  const handleMouseEnter = () => {
-    const id = setTimeout(() => setIsVisible(true), delay);
-    setTimeoutId(id);
-  };
-
-  const handleMouseLeave = () => {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-      setTimeoutId(null);
-    }
-    setIsVisible(false);
-  };
-
-  const pos = positions[position];
-
+function TooltipProvider({
+  delay = 0,
+  ...props
+}: TooltipPrimitive.Provider.Props) {
   return (
-    <div
-      className="relative inline-flex"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
-      {children}
-      <AnimatePresence>
-        {isVisible && (
-          <motion.div
-            initial={pos.initial}
-            animate={pos.animate}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className={clsx(
-              'absolute z-50 px-2.5 py-1.5',
-              'text-xs font-medium text-white whitespace-nowrap',
-              'bg-slate-900 dark:bg-slate-700 rounded-lg shadow-lg',
-              pos.tooltip
-            )}
-          >
-            {content}
-            <div
-              className={clsx(
-                'absolute w-0 h-0 border-4',
-                pos.arrow
-              )}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
+    <TooltipPrimitive.Provider
+      data-slot="tooltip-provider"
+      delay={delay}
+      {...props}
+    />
+  )
 }
+
+function Tooltip({ ...props }: TooltipPrimitive.Root.Props) {
+  return <TooltipPrimitive.Root data-slot="tooltip" {...props} />
+}
+
+function TooltipTrigger({ ...props }: TooltipPrimitive.Trigger.Props) {
+  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
+}
+
+function TooltipContent({
+  className,
+  side = "top",
+  sideOffset = 4,
+  align = "center",
+  alignOffset = 0,
+  children,
+  ...props
+}: TooltipPrimitive.Popup.Props &
+  Pick<
+    TooltipPrimitive.Positioner.Props,
+    "align" | "alignOffset" | "side" | "sideOffset"
+  >) {
+  return (
+    <TooltipPrimitive.Portal>
+      <TooltipPrimitive.Positioner
+        align={align}
+        alignOffset={alignOffset}
+        side={side}
+        sideOffset={sideOffset}
+        className="isolate z-50"
+      >
+        <TooltipPrimitive.Popup
+          data-slot="tooltip-content"
+          className={cn(
+            "z-50 inline-flex w-fit max-w-xs origin-(--transform-origin) items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-xs text-background has-data-[slot=kbd]:pr-1.5 data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-50 **:data-[slot=kbd]:rounded-sm data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+            className
+          )}
+          {...props}
+        >
+          {children}
+          <TooltipPrimitive.Arrow className="z-50 size-2.5 translate-y-[calc(-50%-2px)] rotate-45 rounded-[2px] bg-foreground fill-foreground data-[side=bottom]:top-1 data-[side=inline-end]:top-1/2! data-[side=inline-end]:-left-1 data-[side=inline-end]:-translate-y-1/2 data-[side=inline-start]:top-1/2! data-[side=inline-start]:-right-1 data-[side=inline-start]:-translate-y-1/2 data-[side=left]:top-1/2! data-[side=left]:-right-1 data-[side=left]:-translate-y-1/2 data-[side=right]:top-1/2! data-[side=right]:-left-1 data-[side=right]:-translate-y-1/2 data-[side=top]:-bottom-2.5" />
+        </TooltipPrimitive.Popup>
+      </TooltipPrimitive.Positioner>
+    </TooltipPrimitive.Portal>
+  )
+}
+
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }

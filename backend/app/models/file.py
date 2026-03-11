@@ -16,6 +16,7 @@ SECURITY:
 
 import uuid
 from datetime import datetime
+from typing import Optional
 from sqlalchemy import Column, String, DateTime, Text, JSON, Integer, ForeignKey
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -52,18 +53,26 @@ class File(Base):
     encrypted_mime_type = Column(JSON, nullable=True)
     
     # Storage path (UUID-based, no real filename revealed)
-    # Format: uploads/{user_id}/{file_id}
+    # Format: {user_id}/{file_id}
     storage_path = Column(String(255), nullable=False, unique=True)
-    
+
     # Encrypted file size in bytes (actual ciphertext size, not plaintext)
     encrypted_size = Column(Integer, nullable=False)
-    
+
+    # Optional folder (null = root level)
+    folder_id = Column(String(36), ForeignKey("folders.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    # Soft-delete support (trash bin)
+    deleted_at = Column(DateTime, nullable=True, default=None)
+
     # Metadata timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    
-    # Relationship to user (for queries)
+
+    # Relationships
     user = relationship("User", back_populates="files")
-    
+    folder = relationship("Folder", back_populates="files")
+    versions = relationship("FileVersion", back_populates="file", cascade="all, delete-orphan")
+
     def __repr__(self):
         return f"<File {self.id} user={self.user_id}>"

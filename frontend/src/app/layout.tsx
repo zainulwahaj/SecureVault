@@ -1,13 +1,15 @@
 import type { Metadata, Viewport } from 'next';
 import { AuthProvider } from '@/context/AuthContext';
 import { ThemeScript } from '@/components/ui/ThemeToggle';
-import { ToastProvider } from '@/components/ui/Toast';
+import { ToastProvider } from '@/components/ui/toaster';
 import { ConfirmProvider } from '@/components/ui/ConfirmDialog';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import './globals.css';
 
 export const metadata: Metadata = {
   title: 'SecureVault | Zero-Knowledge File Encryption',
-  description: 'A zero-knowledge secure file vault where all encryption happens client-side. Your files, your keys, your privacy.',
+  description:
+    'A zero-knowledge secure file vault where all encryption happens client-side. Your files, your keys, your privacy.',
   keywords: ['encryption', 'secure', 'vault', 'files', 'privacy', 'zero-knowledge'],
   authors: [{ name: 'SecureVault' }],
 };
@@ -21,27 +23,25 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
         <ThemeScript />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+          rel="stylesheet"
+        />
       </head>
-      <body className="antialiased">
+      <body className="min-h-screen antialiased">
         <AuthProvider>
-          <ToastProvider>
-            <ConfirmProvider>
-              <div className="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
-                {children}
-              </div>
-            </ConfirmProvider>
-          </ToastProvider>
+          <TooltipProvider>
+            <ToastProvider>
+              <ConfirmProvider>{children}</ConfirmProvider>
+            </ToastProvider>
+          </TooltipProvider>
         </AuthProvider>
       </body>
     </html>

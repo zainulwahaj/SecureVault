@@ -1,101 +1,76 @@
-'use client';
+import * as React from "react"
+import { cva, type VariantProps } from "class-variance-authority"
 
-import { type ReactNode } from 'react';
-import { motion } from 'framer-motion';
-import { clsx } from 'clsx';
-import {
-  CheckCircleIcon,
-  ExclamationTriangleIcon,
-  InformationCircleIcon,
-  XCircleIcon,
-} from '@heroicons/react/24/outline';
+import { cn } from "@/lib/utils"
 
-export interface AlertProps {
-  variant?: 'info' | 'success' | 'warning' | 'error';
-  title?: string;
-  children: ReactNode;
-  className?: string;
-  onClose?: () => void;
+const alertVariants = cva(
+  "group/alert relative grid w-full gap-0.5 rounded-lg border px-2.5 py-2 text-left text-sm has-data-[slot=alert-action]:relative has-data-[slot=alert-action]:pr-18 has-[>svg]:grid-cols-[auto_1fr] has-[>svg]:gap-x-2 *:[svg]:row-span-2 *:[svg]:translate-y-0.5 *:[svg]:text-current *:[svg:not([class*='size-'])]:size-4",
+  {
+    variants: {
+      variant: {
+        default: "bg-card text-card-foreground",
+        destructive:
+          "bg-card text-destructive *:data-[slot=alert-description]:text-destructive/90 *:[svg]:text-current",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  }
+)
+
+function Alert({
+  className,
+  variant,
+  ...props
+}: React.ComponentProps<"div"> & VariantProps<typeof alertVariants>) {
+  return (
+    <div
+      data-slot="alert"
+      role="alert"
+      className={cn(alertVariants({ variant }), className)}
+      {...props}
+    />
+  )
 }
 
-const variants = {
-  info: {
-    container: 'bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800',
-    icon: 'text-primary-500',
-    title: 'text-primary-800 dark:text-primary-200',
-    text: 'text-primary-700 dark:text-primary-300',
-  },
-  success: {
-    container: 'bg-success-50 dark:bg-success-900/20 border-success-200 dark:border-success-800',
-    icon: 'text-success-500',
-    title: 'text-success-800 dark:text-success-200',
-    text: 'text-success-700 dark:text-success-300',
-  },
-  warning: {
-    container: 'bg-warning-50 dark:bg-warning-900/20 border-warning-200 dark:border-warning-800',
-    icon: 'text-warning-500',
-    title: 'text-warning-800 dark:text-warning-200',
-    text: 'text-warning-700 dark:text-warning-300',
-  },
-  error: {
-    container: 'bg-error-50 dark:bg-error-900/20 border-error-200 dark:border-error-800',
-    icon: 'text-error-500',
-    title: 'text-error-800 dark:text-error-200',
-    text: 'text-error-700 dark:text-error-300',
-  },
-};
-
-const icons = {
-  info: InformationCircleIcon,
-  success: CheckCircleIcon,
-  warning: ExclamationTriangleIcon,
-  error: XCircleIcon,
-};
-
-export function Alert({
-  variant = 'info',
-  title,
-  children,
-  className,
-  onClose,
-}: AlertProps) {
-  const Icon = icons[variant];
-  const styles = variants[variant];
-
+function AlertTitle({ className, ...props }: React.ComponentProps<"div">) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: -10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      className={clsx(
-        'p-4 rounded-xl border flex gap-3',
-        styles.container,
+    <div
+      data-slot="alert-title"
+      className={cn(
+        "font-medium group-has-[>svg]/alert:col-start-2 [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-foreground",
         className
       )}
-    >
-      <Icon className={clsx('w-5 h-5 flex-shrink-0 mt-0.5', styles.icon)} />
-      <div className="flex-1 min-w-0">
-        {title && (
-          <h4 className={clsx('font-semibold text-sm', styles.title)}>{title}</h4>
-        )}
-        <div className={clsx('text-sm', title && 'mt-1', styles.text)}>
-          {children}
-        </div>
-      </div>
-      {onClose && (
-        <button
-          onClick={onClose}
-          className={clsx(
-            'flex-shrink-0 p-1 rounded-lg transition-colors',
-            'hover:bg-black/5 dark:hover:bg-white/5',
-            styles.icon
-          )}
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      )}
-    </motion.div>
-  );
+      {...props}
+    />
+  )
 }
+
+function AlertDescription({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="alert-description"
+      className={cn(
+        "text-sm text-balance text-muted-foreground md:text-pretty [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-foreground [&_p:not(:last-child)]:mb-4",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function AlertAction({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="alert-action"
+      className={cn("absolute top-2 right-2", className)}
+      {...props}
+    />
+  )
+}
+
+export { Alert, AlertTitle, AlertDescription, AlertAction }

@@ -1,59 +1,52 @@
-'use client';
+import { mergeProps } from "@base-ui/react/merge-props"
+import { useRender } from "@base-ui/react/use-render"
+import { cva, type VariantProps } from "class-variance-authority"
 
-import { type ReactNode } from 'react';
-import { clsx } from 'clsx';
+import { cn } from "@/lib/utils"
 
-export interface BadgeProps {
-  variant?: 'default' | 'primary' | 'success' | 'warning' | 'error' | 'outline';
-  size?: 'sm' | 'md';
-  children: ReactNode;
-  className?: string;
-  dot?: boolean;
-}
+const badgeVariants = cva(
+  "group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-4xl border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-all focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3!",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground [a]:hover:bg-primary/80",
+        secondary:
+          "bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80",
+        destructive:
+          "bg-destructive/10 text-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20",
+        outline:
+          "border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground",
+        ghost:
+          "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  }
+)
 
-const variants = {
-  default: 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300',
-  primary: 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300',
-  success: 'bg-success-100 dark:bg-success-900/30 text-success-700 dark:text-success-300',
-  warning: 'bg-warning-100 dark:bg-warning-900/30 text-warning-700 dark:text-warning-300',
-  error: 'bg-error-100 dark:bg-error-900/30 text-error-700 dark:text-error-300',
-  outline: 'bg-transparent border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400',
-};
-
-const dotColors = {
-  default: 'bg-slate-500',
-  primary: 'bg-primary-500',
-  success: 'bg-success-500',
-  warning: 'bg-warning-500',
-  error: 'bg-error-500',
-  outline: 'bg-slate-500',
-};
-
-const sizes = {
-  sm: 'px-2 py-0.5 text-xs',
-  md: 'px-2.5 py-1 text-xs',
-};
-
-export function Badge({
-  variant = 'default',
-  size = 'md',
-  children,
+function Badge({
   className,
-  dot = false,
-}: BadgeProps) {
-  return (
-    <span
-      className={clsx(
-        'inline-flex items-center gap-1.5 font-medium rounded-full',
-        variants[variant],
-        sizes[size],
-        className
-      )}
-    >
-      {dot && (
-        <span className={clsx('w-1.5 h-1.5 rounded-full', dotColors[variant])} />
-      )}
-      {children}
-    </span>
-  );
+  variant = "default",
+  render,
+  ...props
+}: useRender.ComponentProps<"span"> & VariantProps<typeof badgeVariants>) {
+  return useRender({
+    defaultTagName: "span",
+    props: mergeProps<"span">(
+      {
+        className: cn(badgeVariants({ variant }), className),
+      },
+      props
+    ),
+    render,
+    state: {
+      slot: "badge",
+      variant,
+    },
+  })
 }
+
+export { Badge, badgeVariants }

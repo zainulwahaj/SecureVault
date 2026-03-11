@@ -1,43 +1,41 @@
 'use client';
 
-/**
- * SharedFilesView - Display files shared with the current user
- * 
- * SECURITY:
- * 1. Fetch encrypted file list from backend
- * 2. Decrypt private key with VaultKey
- * 3. Decrypt FileKey with private key (envelope encryption)
- * 4. Decrypt filename with FileKey
- * 5. For download: decrypt content with FileKey
- */
-
 import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
-import { useToast } from '@/components/ui/Toast';
+import { toast } from 'sonner';
 import type { SharedFile, DecryptedSharedFile, EncryptedBlobData } from '@/types';
 import type { EncryptedBlob } from '@/lib/crypto/types';
 import * as api from '@/lib/api';
 import { decryptFileKeyFromSender, decryptPrivateKey } from '@/lib/crypto/keypair';
 import { decryptFilename, decryptMimeType, decryptFileContent } from '@/lib/crypto/file';
-import { Button } from '@/components/ui/Button';
-import { Alert } from '@/components/ui/Alert';
-import { Tabs } from '@/components/ui/Tabs';
-import { Spinner } from '@/components/ui/Spinner';
-import { NoSharedFiles } from '@/components/ui/EmptyState';
+import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Spinner } from '@/components/ui/spinner';
 import {
-  DocumentIcon,
-  PhotoIcon,
-  VideoCameraIcon,
-  MusicalNoteIcon,
-  DocumentTextIcon,
-  TableCellsIcon,
-  ArchiveBoxIcon,
-  ArrowDownTrayIcon,
-  UserIcon,
-  InboxArrowDownIcon,
-  PaperAirplaneIcon,
-} from '@heroicons/react/24/outline';
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+} from '@/components/ui/empty';
+import {
+  FileIcon,
+  ImageIcon,
+  VideoIcon,
+  Music,
+  FileText,
+  Table,
+  Archive,
+  Download,
+  User,
+  Inbox,
+  Send,
+  AlertCircle,
+  Info,
+  X,
+} from 'lucide-react';
 
 interface SharedFilesViewProps {
   className?: string;
@@ -45,29 +43,20 @@ interface SharedFilesViewProps {
 
 export default function SharedFilesView({ className = '' }: SharedFilesViewProps) {
   const { getVaultKey, hasVaultKey, user } = useAuth();
-  const toast = useToast();
   const [sharedWithMe, setSharedWithMe] = useState<DecryptedSharedFile[]>([]);
   const [sharedByMe, setSharedByMe] = useState<SharedFile[]>([]);
-  const [activeTab, setActiveTab] = useState<'with-me' | 'by-me'>('with-me');
+  const [activeTab, setActiveTab] = useState<string>('with-me');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
-
-  // Cache for decrypted private key
   const [keypair, setKeypair] = useState<{ privateKey: Uint8Array; publicKey: string } | null>(null);
 
-  /**
-   * Convert backend blob format to crypto EncryptedBlob
-   */
   const toEncryptedBlob = (data: EncryptedBlobData): EncryptedBlob => ({
     ciphertext: data.ciphertext,
     algorithm: data.algorithm as 'xchacha20-poly1305',
     version: data.version,
   });
 
-  /**
-   * Load and cache private key
-   */
   const loadKeypair = useCallback(async () => {
     if (keypair) return keypair;
 
@@ -76,15 +65,9 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
 
     try {
       const response = await api.getMyEncryptedPrivateKey();
-      if (!response.success || !response.data) {
-        return null;
-      }
+      if (!response.success || !response.data) return null;
 
-      const decrypted = await decryptPrivateKey(
-        response.data.encryptedPrivateKey,
-        vaultKey
-      );
-      
+      const decrypted = await decryptPrivateKey(response.data.encryptedPrivateKey, vaultKey);
       const result = { privateKey: decrypted, publicKey: response.data.publicKey };
       setKeypair(result);
       return result;
@@ -93,9 +76,6 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
     }
   }, [getVaultKey, keypair]);
 
-  /**
-   * Load files shared with me
-   */
   const loadSharedWithMe = useCallback(async () => {
     if (!hasVaultKey) return;
 
@@ -113,47 +93,33 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
       const response = await api.getFilesSharedWithMe();
       if (!response.success || !response.data) {
         setError(response.error || 'Failed to load shared files');
-        toast.error('Failed to load shared files', response.error);
+        toast.error('Failed to load shared files', { description: response.error });
         return;
       }
 
-      // If no files shared, just show empty state (not an error)
       if (response.data.files.length === 0) {
         setSharedWithMe([]);
         return;
       }
 
-      // Decrypt metadata for each file
       const decrypted: DecryptedSharedFile[] = [];
-      
+
       for (const file of response.data.files) {
         try {
-          // Decrypt FileKey with our private key
           const fileKey = await decryptFileKeyFromSender(
             file.encryptedFileKeyForRecipient.ciphertext,
             myKeypair.publicKey,
             myKeypair.privateKey
           );
 
-          // Decrypt filename
-          const filenameResult = await decryptFilename(
-            toEncryptedBlob(file.encryptedFilename),
-            fileKey
-          );
+          const filenameResult = await decryptFilename(toEncryptedBlob(file.encryptedFilename), fileKey);
 
-          // Decrypt mime type if present
           let mimeType = 'application/octet-stream';
           if (file.encryptedMimeType) {
-            const mimeResult = await decryptMimeType(
-              toEncryptedBlob(file.encryptedMimeType),
-              fileKey
-            );
-            if (mimeResult.success && mimeResult.data) {
-              mimeType = mimeResult.data;
-            }
+            const mimeResult = await decryptMimeType(toEncryptedBlob(file.encryptedMimeType), fileKey);
+            if (mimeResult.success && mimeResult.data) mimeType = mimeResult.data;
           }
 
-          // Clear FileKey
           fileKey.fill(0);
 
           if (filenameResult.success && filenameResult.data) {
@@ -171,9 +137,7 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
               encryptedFileKeyForRecipient: file.encryptedFileKeyForRecipient,
             });
           }
-        } catch {
-          // Skip files that fail to decrypt
-        }
+        } catch { /* skip files that fail to decrypt */ }
       }
 
       setSharedWithMe(decrypted);
@@ -183,11 +147,8 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
     } finally {
       setIsLoading(false);
     }
-  }, [hasVaultKey, loadKeypair, toast]);
+  }, [hasVaultKey, loadKeypair]);
 
-  /**
-   * Load files shared by me
-   */
   const loadSharedByMe = useCallback(async () => {
     if (!hasVaultKey) return;
 
@@ -200,16 +161,14 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
         setError(response.error || 'Failed to load shared files');
         return;
       }
-
       setSharedByMe(response.data.shares);
-    } catch (err) {
+    } catch {
       setError('Failed to load shared files');
     } finally {
       setIsLoading(false);
     }
   }, [hasVaultKey]);
 
-  // Load data based on active tab
   useEffect(() => {
     if (activeTab === 'with-me') {
       loadSharedWithMe();
@@ -218,9 +177,6 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
     }
   }, [activeTab, loadSharedWithMe, loadSharedByMe]);
 
-  /**
-   * Download a shared file
-   */
   const handleDownload = useCallback(async (file: DecryptedSharedFile) => {
     if (!keypair) {
       toast.error('Encryption keys not loaded');
@@ -230,29 +186,21 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
     try {
       setProgress(`Downloading ${file.filename}...`);
 
-      // Download encrypted content
       const downloadResponse = await api.downloadFile(file.fileId);
       if (!downloadResponse.success || !downloadResponse.data) {
-        toast.error('Download failed', downloadResponse.error);
+        toast.error('Download failed', { description: downloadResponse.error });
         return;
       }
 
       setProgress(`Decrypting ${file.filename}...`);
 
-      // Decrypt FileKey with our private key
       const fileKey = await decryptFileKeyFromSender(
         file.encryptedFileKeyForRecipient.ciphertext,
         keypair.publicKey,
         keypair.privateKey
       );
 
-      // Decrypt content
-      const decryptResult = await decryptFileContent(
-        downloadResponse.data,
-        fileKey
-      );
-
-      // Clear FileKey
+      const decryptResult = await decryptFileContent(downloadResponse.data, fileKey);
       fileKey.fill(0);
 
       if (!decryptResult.success || !decryptResult.data) {
@@ -260,7 +208,6 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
         return;
       }
 
-      // Create download
       const arrayBuffer = new ArrayBuffer(decryptResult.data.length);
       new Uint8Array(arrayBuffer).set(decryptResult.data);
       const blob = new Blob([arrayBuffer], { type: file.mimeType });
@@ -272,15 +219,14 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      
-      toast.success(`Downloaded ${file.filename}`);
 
+      toast.success(`Downloaded ${file.filename}`);
     } catch {
-      toast.error('Download failed', 'An unexpected error occurred');
+      toast.error('Download failed', { description: 'An unexpected error occurred' });
     } finally {
       setProgress(null);
     }
-  }, [keypair, toast]);
+  }, [keypair]);
 
   const formatSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes} B`;
@@ -289,168 +235,164 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
   };
 
   const getFileIcon = (mimeType: string) => {
-    const iconClass = "w-6 h-6";
-    if (mimeType.startsWith('image/')) return <PhotoIcon className={`${iconClass} text-pink-500`} />;
-    if (mimeType.startsWith('video/')) return <VideoCameraIcon className={`${iconClass} text-purple-500`} />;
-    if (mimeType.startsWith('audio/')) return <MusicalNoteIcon className={`${iconClass} text-green-500`} />;
-    if (mimeType.includes('pdf')) return <DocumentTextIcon className={`${iconClass} text-red-500`} />;
-    if (mimeType.includes('document') || mimeType.includes('word')) return <DocumentTextIcon className={`${iconClass} text-blue-500`} />;
-    if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) return <TableCellsIcon className={`${iconClass} text-emerald-500`} />;
-    if (mimeType.includes('zip') || mimeType.includes('archive')) return <ArchiveBoxIcon className={`${iconClass} text-amber-500`} />;
-    return <DocumentIcon className={`${iconClass} text-slate-500`} />;
+    const cls = 'size-6';
+    if (mimeType.startsWith('image/')) return <ImageIcon className={`${cls} text-pink-500`} />;
+    if (mimeType.startsWith('video/')) return <VideoIcon className={`${cls} text-purple-500`} />;
+    if (mimeType.startsWith('audio/')) return <Music className={`${cls} text-green-500`} />;
+    if (mimeType.includes('pdf')) return <FileText className={`${cls} text-red-500`} />;
+    if (mimeType.includes('document') || mimeType.includes('word')) return <FileText className={`${cls} text-blue-500`} />;
+    if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) return <Table className={`${cls} text-emerald-500`} />;
+    if (mimeType.includes('zip') || mimeType.includes('archive')) return <Archive className={`${cls} text-amber-500`} />;
+    return <FileIcon className={`${cls} text-muted-foreground`} />;
   };
-
-  const tabs = [
-    { id: 'with-me', label: 'Shared with me', icon: <InboxArrowDownIcon className="w-4 h-4" /> },
-    { id: 'by-me', label: 'Shared by me', icon: <PaperAirplaneIcon className="w-4 h-4" /> },
-  ];
 
   return (
     <div className={`p-6 ${className}`}>
-      {/* Error Display */}
       <AnimatePresence>
         {error && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="mb-4"
-          >
-            <Alert variant="error" onClose={() => setError(null)}>
-              {error}
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="mb-4">
+            <Alert variant="destructive">
+              <AlertCircle className="size-4" />
+              <AlertDescription className="flex items-center justify-between">
+                {error}
+                <button onClick={() => setError(null)} className="ml-2 hover:opacity-70"><X className="size-4" /></button>
+              </AlertDescription>
             </Alert>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Progress Display */}
       <AnimatePresence>
         {progress && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="mb-4"
-          >
-            <Alert variant="info">
-              <div className="flex items-center gap-2">
-                <Spinner size="sm" />
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="mb-4">
+            <Alert>
+              <Info className="size-4" />
+              <AlertDescription className="flex items-center gap-2">
+                <Spinner className="size-3" />
                 {progress}
-              </div>
+              </AlertDescription>
             </Alert>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Tab Navigation */}
-      <div className="mb-6">
-        <Tabs
-          tabs={tabs}
-          activeTab={activeTab}
-          onChange={(id) => setActiveTab(id as 'with-me' | 'by-me')}
-          variant="underline"
-        />
-      </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
+        <TabsList>
+          <TabsTrigger value="with-me">
+            <Inbox className="size-4 mr-2" />
+            Shared with me
+          </TabsTrigger>
+          <TabsTrigger value="by-me">
+            <Send className="size-4 mr-2" />
+            Shared by me
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Content */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Spinner size="lg" />
-        </div>
-      ) : activeTab === 'with-me' ? (
-        /* Shared With Me */
-        sharedWithMe.length === 0 ? (
-          <NoSharedFiles
-            title="No files shared with you"
-            description="When someone shares a file with you, it will appear here."
-          />
-        ) : (
-          <motion.div layout className="space-y-2">
-            <AnimatePresence>
-              {sharedWithMe.map((file, index) => (
-                <motion.div
-                  key={file.shareId}
-                  layout
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  transition={{ delay: index * 0.05 }}
-                  className="group flex items-center justify-between p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-primary-300 dark:hover:border-primary-700 hover:shadow-soft transition-all"
-                >
-                  <div className="flex items-center min-w-0 flex-1 gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center flex-shrink-0">
-                      {getFileIcon(file.mimeType)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-slate-900 dark:text-white truncate" title={file.filename}>
-                        {file.filename}
-                      </p>
-                      <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                        <span>{formatSize(file.size)}</span>
-                        <span>•</span>
-                        <div className="flex items-center gap-1">
-                          <UserIcon className="w-3.5 h-3.5" />
-                          <span className="truncate">{file.ownerEmail}</span>
-                        </div>
-                      </div>
-                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                        Shared {new Date(file.sharedAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDownload(file)}
-                    title="Download"
-                    className="opacity-0 group-hover:opacity-100 transition-opacity"
+        <TabsContent value="with-me" className="mt-6">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12"><Spinner className="size-8" /></div>
+          ) : sharedWithMe.length === 0 ? (
+            <Empty className="py-12">
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><Inbox /></EmptyMedia>
+                <EmptyTitle>No files shared with you</EmptyTitle>
+                <EmptyDescription>When someone shares a file with you, it will appear here.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <motion.div layout className="space-y-2">
+              <AnimatePresence>
+                {sharedWithMe.map((file, index) => (
+                  <motion.div
+                    key={file.shareId}
+                    layout
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    transition={{ delay: index * 0.05 }}
+                    className="group flex items-center justify-between p-4 bg-card border border-border rounded-xl hover:border-primary/50 hover:shadow-sm transition-all"
                   >
-                    <ArrowDownTrayIcon className="w-4 h-4" />
-                  </Button>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </motion.div>
-        )
-      ) : (
-        /* Shared By Me */
-        sharedByMe.length === 0 ? (
-          <NoSharedFiles
-            title="No files shared by you"
-            description="Files you share with others will appear here."
-          />
-        ) : (
-          <motion.div layout className="space-y-2">
-            <AnimatePresence>
-              {sharedByMe.map((share, index) => (
-                <motion.div
-                  key={share.shareId}
-                  layout
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  transition={{ delay: index * 0.05 }}
-                  className="flex items-center justify-between p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
-                      <PaperAirplaneIcon className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                    <div className="flex items-center min-w-0 flex-1 gap-4">
+                      <div className="size-12 rounded-xl bg-muted flex items-center justify-center flex-shrink-0">
+                        {getFileIcon(file.mimeType)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-foreground truncate" title={file.filename}>
+                          {file.filename}
+                        </p>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <span>{formatSize(file.size)}</span>
+                          <span>•</span>
+                          <div className="flex items-center gap-1">
+                            <User className="size-3.5" />
+                            <span className="truncate">{file.ownerEmail}</span>
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground/70 mt-0.5">
+                          Shared {new Date(file.sharedAt).toLocaleDateString()}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm text-slate-600 dark:text-slate-300">
-                        Shared with <span className="font-medium text-slate-900 dark:text-white">{share.recipientEmail}</span>
-                      </p>
-                      <p className="text-xs text-slate-400 dark:text-slate-500">
-                        {new Date(share.sharedAt).toLocaleDateString()}
-                      </p>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDownload(file)}
+                      title="Download"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Download className="size-4" />
+                    </Button>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </motion.div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="by-me" className="mt-6">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12"><Spinner className="size-8" /></div>
+          ) : sharedByMe.length === 0 ? (
+            <Empty className="py-12">
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><Send /></EmptyMedia>
+                <EmptyTitle>No files shared by you</EmptyTitle>
+                <EmptyDescription>Files you share with others will appear here.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <motion.div layout className="space-y-2">
+              <AnimatePresence>
+                {sharedByMe.map((share, index) => (
+                  <motion.div
+                    key={share.shareId}
+                    layout
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    transition={{ delay: index * 0.05 }}
+                    className="flex items-center justify-between p-4 bg-card border border-border rounded-xl"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                        <Send className="size-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">
+                          Shared with <span className="font-medium text-foreground">{share.recipientEmail}</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground/70">
+                          {new Date(share.sharedAt).toLocaleDateString()}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </motion.div>
-        )
-      )}
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </motion.div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
