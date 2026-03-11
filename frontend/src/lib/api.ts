@@ -32,7 +32,7 @@ import type {
 } from '@/types';
 import type { EncryptedBlob } from './crypto/types';
 
-const API_BASE = '/api';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '/api';
 
 /**
  * Generic fetch wrapper with error handling
@@ -147,11 +147,35 @@ export async function logout(): Promise<ApiResponse<void>> {
   });
 }
 
+export async function changePassword(payload: {
+  oldProof: string;
+  salt: string;
+  kdfParams: { algorithm: string; iterations: number; keyLength: number; version: number };
+  encryptedVaultKey: { ciphertext: string; algorithm: string; version: number };
+  loginProof: string;
+  encryptedPrivateKey: string;
+}): Promise<ApiResponse<{ success: boolean; message: string }>> {
+  return fetchApi<{ success: boolean; message: string }>('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 /**
  * Get current authenticated user from session
  */
 export async function getCurrentUser(): Promise<ApiResponse<User>> {
   return fetchApi<User>('/auth/me');
+}
+
+export async function updateProfile(payload: {
+  displayName?: string | null;
+  avatarUrl?: string | null;
+}): Promise<ApiResponse<User>> {
+  return fetchApi<User>('/auth/profile', {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
 }
 
 // ============================================================================
@@ -530,6 +554,10 @@ export async function createLink(
 
 export async function listLinksForFile(fileId: string): Promise<ApiResponse<SharedLinkListResponse>> {
   return fetchApi<SharedLinkListResponse>(`/links/files/${fileId}`);
+}
+
+export async function listMyLinks(): Promise<ApiResponse<SharedLinkListResponse>> {
+  return fetchApi<SharedLinkListResponse>('/links/my-links');
 }
 
 export async function revokeLink(token: string): Promise<ApiResponse<{ success: boolean }>> {

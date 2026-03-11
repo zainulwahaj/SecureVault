@@ -8,6 +8,8 @@ from app.schemas.user import (
     ZKLoginVerifyRequest,
     UserResponse,
     SessionResponse,
+    ChangePasswordRequest,
+    UpdateProfileRequest,
 )
 from app.schemas.file import (
     FileUploadMetadata,
@@ -67,6 +69,7 @@ __all__ = [
     "ZKLoginVerifyRequest",
     "UserResponse",
     "SessionResponse",
+    "UpdateProfileRequest",
     # File schemas
     "FileUploadMetadata",
     "FileUploadResponse",

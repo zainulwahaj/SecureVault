@@ -102,6 +102,24 @@ async def list_links_for_file(
     )
 
 
+@router.get("/my-links", response_model=LinkListResponse)
+async def list_my_links(
+    current_user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """List all active shared links created by the current user."""
+    links = (
+        db.query(SharedLink)
+        .filter(SharedLink.owner_id == current_user.id, SharedLink.is_active == True)
+        .order_by(SharedLink.created_at.desc())
+        .all()
+    )
+    return LinkListResponse(
+        links=[LinkResponse.from_orm_model(l) for l in links],
+        totalCount=len(links),
+    )
+
+
 @router.delete("/{token}")
 async def revoke_link(
     token: str,

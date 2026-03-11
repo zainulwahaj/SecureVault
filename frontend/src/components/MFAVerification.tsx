@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Spinner } from '@/components/ui/spinner';
+import OTPInput from '@/components/ui/otpinput';
 import { Lock, AlertCircle } from 'lucide-react';
 
 interface MFAVerificationProps {
@@ -22,14 +23,15 @@ export default function MFAVerification({ vaultKey, onSuccess, onCancel }: MFAVe
   const [error, setError] = useState<string | null>(null);
   const [useRecoveryCode, setUseRecoveryCode] = useState(false);
 
-  async function handleVerify() {
+  async function handleVerify(submittedCode?: string) {
+    const codeToUse = submittedCode ?? code;
     if (useRecoveryCode) {
-      if (code.length !== 8) {
+      if (codeToUse.length !== 8) {
         setError('Recovery code must be 8 characters');
         return;
       }
     } else {
-      if (code.length !== 6) {
+      if (codeToUse.length !== 6) {
         setError('Please enter a valid 6-digit code');
         return;
       }
@@ -40,7 +42,7 @@ export default function MFAVerification({ vaultKey, onSuccess, onCancel }: MFAVe
 
     try {
       if (useRecoveryCode) {
-        const result = await verifyMFA(code, true);
+        const result = await verifyMFA(codeToUse, true);
         if (result.success && result.data?.verified) {
           onSuccess();
         } else {
@@ -63,14 +65,14 @@ export default function MFAVerification({ vaultKey, onSuccess, onCancel }: MFAVe
         }
 
         const secret = decryptResult.data;
-        const isValid = verifyTOTPCode(secret, code);
+        const isValid = verifyTOTPCode(secret, codeToUse);
         if (!isValid) {
           setError('Invalid verification code');
           setLoading(false);
           return;
         }
 
-        const result = await verifyMFA(code, false);
+        const result = await verifyMFA(codeToUse, false);
         if (result.success && result.data?.verified) {
           onSuccess();
         } else {
@@ -108,23 +110,32 @@ export default function MFAVerification({ vaultKey, onSuccess, onCancel }: MFAVe
             </Alert>
           )}
 
-          <Input
-            type="text"
-            value={code}
-            onChange={(e) => {
-              const value = useRecoveryCode
-                ? e.target.value.toUpperCase().slice(0, 8)
-                : e.target.value.replace(/\D/g, '').slice(0, 6);
-              setCode(value);
-            }}
-            placeholder={useRecoveryCode ? 'XXXXXXXX' : '000000'}
-            className="text-center text-2xl tracking-widest font-mono py-3"
-            maxLength={useRecoveryCode ? 8 : 6}
-            autoFocus
-          />
+          {useRecoveryCode ? (
+            <Input
+              type="text"
+              value={code}
+              onChange={(e) => {
+                const value = e.target.value.toUpperCase().slice(0, 8);
+                setCode(value);
+              }}
+              placeholder="XXXXXXXX"
+              className="text-center text-2xl tracking-widest font-mono py-3"
+              maxLength={8}
+              autoFocus
+            />
+          ) : (
+            <OTPInput
+              length={6}
+              separator
+              label=""
+              value={code}
+              onChange={setCode}
+              onComplete={(otp) => handleVerify(otp)}
+            />
+          )}
 
           <Button
-            onClick={handleVerify}
+            onClick={() => handleVerify()}
             disabled={loading || (useRecoveryCode ? code.length !== 8 : code.length !== 6)}
             className="w-full"
           >

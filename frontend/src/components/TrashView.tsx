@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
@@ -11,6 +10,21 @@ import { decryptFileMetadata } from '@/lib/crypto';
 import * as api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
+import { Badge } from '@/components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Empty,
   EmptyHeader,
@@ -28,7 +42,9 @@ import {
   Music,
   FileText,
   Clock,
+  MoreHorizontal,
 } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 export default function TrashView() {
   const { getVaultKey, hasVaultKey } = useAuth();
@@ -128,7 +144,7 @@ export default function TrashView() {
   };
 
   const getFileIcon = (mimeType: string) => {
-    const cls = 'size-6';
+    const cls = 'size-5';
     if (mimeType.startsWith('image/')) return <ImageIcon className={`${cls} text-pink-500`} />;
     if (mimeType.startsWith('video/')) return <VideoIcon className={`${cls} text-purple-500`} />;
     if (mimeType.startsWith('audio/')) return <Music className={`${cls} text-green-500`} />;
@@ -144,101 +160,105 @@ export default function TrashView() {
     return Math.max(0, remaining);
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Spinner className="size-8" />
-      </div>
-    );
-  }
-
   return (
-    <div className="p-6">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="size-10 rounded-xl bg-destructive/10 flex items-center justify-center">
-          <Trash2 className="size-5 text-destructive" />
-        </div>
-        <div>
-          <h3 className="text-lg font-semibold text-foreground">Trash</h3>
-          <p className="text-sm text-muted-foreground">
-            Files are permanently deleted after 30 days
-          </p>
-        </div>
-      </div>
+    <div className="p-4 sm:p-6 lg:p-8 min-w-0 overflow-hidden">
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-6"
+      >
+        <h1 className="text-2xl font-bold text-foreground tracking-tight">Trash</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Files are permanently deleted after 30 days
+        </p>
+      </motion.div>
 
-      {files.length === 0 ? (
-        <Empty>
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <Trash2 />
-            </EmptyMedia>
-            <EmptyTitle>Trash is empty</EmptyTitle>
-            <EmptyDescription>
-              Deleted files will appear here for 30 days before being permanently removed.
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center py-20 gap-3">
+          <Spinner className="size-6" />
+          <p className="text-sm text-muted-foreground">Loading trash...</p>
+        </div>
+      ) : files.length === 0 ? (
+        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
+          <Empty className="py-16">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><Trash2 /></EmptyMedia>
+              <EmptyTitle>Trash is empty</EmptyTitle>
+              <EmptyDescription>Deleted files will appear here for 30 days before being permanently removed.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        </motion.div>
       ) : (
-        <motion.div layout className="space-y-2">
-          <AnimatePresence>
-            {files.map((file, index) => {
-              const days = daysUntilPurge(file.deletedAt);
-              return (
-                <motion.div
-                  key={file.id}
-                  layout
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  transition={{ delay: index * 0.05 }}
-                  className="group flex items-center justify-between p-4 bg-card border border-border rounded-xl hover:shadow-sm transition-all"
-                >
-                  <div className="flex items-center min-w-0 flex-1 gap-4">
-                    <div className="size-12 rounded-xl bg-muted flex items-center justify-center flex-shrink-0 opacity-50">
-                      {getFileIcon(file.mimeType)}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-medium text-foreground truncate line-through opacity-70">
-                        {file.filename}
-                      </p>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <span>{formatSize(file.size)}</span>
-                        {days !== null && (
-                          <>
-                            <span>·</span>
-                            <span className={`flex items-center gap-1 ${days <= 7 ? 'text-destructive' : ''}`}>
-                              <Clock className="size-3.5" />
-                              {days} day{days !== 1 ? 's' : ''} left
-                            </span>
-                          </>
-                        )}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.1 }}
+          className="rounded-xl border border-border overflow-hidden"
+        >
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent bg-muted/30">
+                <TableHead>Name</TableHead>
+                <TableHead className="hidden sm:table-cell">Size</TableHead>
+                <TableHead className="hidden md:table-cell">Time left</TableHead>
+                <TableHead className="w-10" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {files.map((file, index) => {
+                const days = daysUntilPurge(file.deletedAt);
+                return (
+                  <motion.tr
+                    key={file.id}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: index * 0.03 }}
+                    className="group border-b border-border transition-colors hover:bg-muted/50"
+                  >
+                    <TableCell>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="size-9 rounded-lg bg-muted/80 flex items-center justify-center shrink-0 opacity-60">
+                          {getFileIcon(file.mimeType)}
+                        </div>
+                        <span className="text-sm text-muted-foreground truncate">{file.filename}</span>
                       </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 ml-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleRestore(file)}
-                      className="text-primary hover:bg-primary/10"
-                    >
-                      <Undo2 className="size-4 mr-1" />
-                      Restore
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handlePermanentDelete(file)}
-                      className="text-destructive hover:bg-destructive/10"
-                    >
-                      <AlertTriangle className="size-4 mr-1" />
-                      Delete
-                    </Button>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell text-muted-foreground text-sm">
+                      {formatSize(file.size)}
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      {days !== null && (
+                        <Badge
+                          variant="outline"
+                          className={`gap-1 font-normal ${days <= 7 ? 'border-destructive/30 text-destructive bg-destructive/5' : 'text-muted-foreground'}`}
+                        >
+                          <Clock className="size-3" />
+                          {days}d left
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger className="inline-flex items-center justify-center rounded-lg size-8 text-muted-foreground hover:bg-accent hover:text-foreground opacity-0 group-hover:opacity-100 transition-all">
+                          <MoreHorizontal className="size-4" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-44">
+                          <DropdownMenuItem onClick={() => handleRestore(file)}>
+                            <Undo2 className="size-4 mr-2" />
+                            Restore
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handlePermanentDelete(file)} className="text-destructive focus:text-destructive">
+                            <AlertTriangle className="size-4 mr-2" />
+                            Delete Forever
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </motion.tr>
+                );
+              })}
+            </TableBody>
+          </Table>
         </motion.div>
       )}
     </div>

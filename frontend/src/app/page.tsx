@@ -130,14 +130,14 @@ export default function HomePage() {
       {/* Content overlay */}
       <div className="relative z-10">
         {/* Header */}
-        <header className="bg-black/40 supports-[backdrop-filter]:bg-black/30 sticky top-0 z-50 w-full border-b border-white/10 backdrop-blur-lg">
+        <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur-lg dark:bg-black/40 dark:border-white/10 supports-[backdrop-filter]:dark:bg-black/30">
           <nav className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4">
-            <Logo animated />
+            <Logo />
             <div className="hidden items-center gap-2 lg:flex">
               {navLinks.map((link) => (
                 <a
                   key={link.label}
-                  className={buttonVariants({ variant: 'ghost', className: 'text-white/80 hover:text-white hover:bg-white/10' })}
+                  className={buttonVariants({ variant: 'ghost', className: 'text-foreground hover:text-foreground dark:text-white/80 dark:hover:text-white dark:hover:bg-white/10' })}
                   href={link.href}
                 >
                   {link.label}
@@ -145,16 +145,18 @@ export default function HomePage() {
               ))}
               <ThemeToggle />
               <Link href="/login">
-                <Button variant="outline" size="sm" className="text-white border-white/20 bg-white/5 hover:bg-white/10 hover:text-white">
+                <Button
+                  className="h-9 min-w-[7rem] rounded-full border-0 px-5 py-2 text-sm font-semibold bg-muted text-foreground hover:bg-muted/80 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
+                >
                   Sign In
                 </Button>
               </Link>
               <Link href="/register">
-                <Button size="sm">Get Started</Button>
+                <InteractiveHoverButton text="Get Started" className="w-auto min-w-[7rem] px-5 py-2 border-primary bg-primary text-primary-foreground hover:border-primary hover:bg-primary" />
               </Link>
             </div>
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-              <Button size="icon" variant="outline" className="lg:hidden border-white/20 bg-white/5 text-white hover:bg-white/10">
+              <Button size="icon" variant="outline" className="lg:hidden border-border dark:border-white/20 dark:bg-white/5 dark:text-white dark:hover:bg-white/10">
                 <MenuToggle
                   strokeWidth={2.5}
                   open={mobileOpen}
@@ -184,10 +186,10 @@ export default function HomePage() {
                 </div>
                 <SheetFooter>
                   <Link href="/login" onClick={() => setMobileOpen(false)}>
-                    <Button variant="outline" className="w-full">Sign In</Button>
+                    <Button variant="secondary" className="w-full rounded-full">Sign In</Button>
                   </Link>
                   <Link href="/register" onClick={() => setMobileOpen(false)}>
-                    <Button className="w-full">Get Started</Button>
+                    <InteractiveHoverButton text="Get Started" className="w-full min-w-0 rounded-lg border-primary bg-primary text-primary-foreground" />
                   </Link>
                 </SheetFooter>
               </SheetContent>
@@ -197,10 +199,11 @@ export default function HomePage() {
 
         {/* Hero Section */}
         <section className="relative flex min-h-[calc(100vh-3.5rem)] items-center justify-center px-4">
-          <div className="container mx-auto">
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/70 via-background/20 to-transparent dark:from-transparent dark:via-transparent" />
+          <div className="container relative z-10 mx-auto">
             <div className="flex gap-8 py-20 lg:py-40 items-center justify-center flex-col">
               <div>
-                <Button variant="secondary" size="sm" className="gap-4 bg-white/10 text-white/90 border-white/20 hover:bg-white/20 backdrop-blur-sm">
+                <Button variant="secondary" size="sm" className="gap-4 border border-border bg-muted/50 text-foreground hover:bg-muted dark:bg-white/10 dark:text-white/90 dark:border-white/20 dark:hover:bg-white/20 backdrop-blur-sm">
                   <ShieldCheck className="size-4" />
                   Zero-Knowledge Encryption
                   <MoveRight className="w-4 h-4" />
@@ -208,13 +211,13 @@ export default function HomePage() {
               </div>
               <div className="flex gap-4 flex-col">
                 <h1 className="text-5xl md:text-7xl max-w-2xl tracking-tighter text-center font-regular">
-                  <span className="text-white">Your files, always</span>
+                  <span className="text-foreground dark:text-white">Your files, always</span>
                   <span className="relative flex w-full justify-center overflow-hidden text-center md:pb-4 md:pt-1">
                     &nbsp;
                     {titles.map((title, index) => (
                       <motion.span
                         key={index}
-                        className="absolute font-semibold bg-gradient-to-r from-white to-white/60 bg-clip-text text-transparent"
+                        className="absolute font-semibold bg-gradient-to-r from-foreground to-foreground/60 dark:from-white dark:to-white/60 bg-clip-text text-transparent"
                         initial={{ opacity: 0, y: '-100' }}
                         transition={{ type: 'spring', stiffness: 50 }}
                         animate={
@@ -235,7 +238,7 @@ export default function HomePage() {
                   </span>
                 </h1>
 
-                <p className="text-lg md:text-xl leading-relaxed tracking-tight text-white/60 max-w-2xl text-center">
+                <p className="text-lg md:text-xl leading-relaxed tracking-tight text-muted-foreground max-w-2xl text-center dark:text-white/60">
                   A secure file vault where all encryption happens in your browser.
                   We can&apos;t read your files. We can&apos;t reset your password.
                   That&apos;s the point.
@@ -243,20 +246,22 @@ export default function HomePage() {
               </div>
               <div className="flex flex-row gap-3">
                 <Link href="/login">
-                  <Button size="lg" className="gap-4 bg-white/10 text-white border-white/20 hover:bg-white/20 backdrop-blur-sm" variant="outline">
+                  <Button
+                    className="h-11 min-w-[9rem] rounded-full border-0 px-8 py-2.5 text-base font-semibold bg-muted text-foreground hover:bg-muted/80 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
+                  >
                     Sign In
                   </Button>
                 </Link>
                 <Link href="/register">
-                  <InteractiveHoverButton text="Create Vault" className="w-auto px-8 py-2.5 text-base border-white/30 text-white" />
+                  <InteractiveHoverButton text="Get Started" className="w-auto min-w-[9rem] px-8 py-2.5 text-base border-primary bg-primary text-primary-foreground" />
                 </Link>
               </div>
 
               {/* Trust badges */}
-              <div className="mt-4 flex flex-wrap items-center justify-center gap-6 text-sm text-white/50">
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground dark:text-white/50">
                 {['Open Source', 'Client-Side Only', 'No Tracking'].map((label) => (
                   <div key={label} className="flex items-center gap-2">
-                    <CheckCircle2 className="size-4 text-green-400" />
+                    <CheckCircle2 className="size-4 text-green-600 dark:text-green-400" />
                     {label}
                   </div>
                 ))}
@@ -318,10 +323,7 @@ export default function HomePage() {
                   Create your vault in seconds. No credit card required. Your first step towards true privacy.
                 </p>
                 <Link href="/register">
-                  <Button size="lg" className="gap-2">
-                    Get Started Free
-                    <MoveRight className="size-4" />
-                  </Button>
+                  <InteractiveHoverButton text="Get Started Free" className="w-auto min-w-[10rem] px-6 py-3 text-base border-primary bg-primary text-primary-foreground" />
                 </Link>
               </div>
             </div>

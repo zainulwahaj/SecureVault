@@ -96,6 +96,10 @@ chmod +x scripts/deploy.sh
 ./scripts/deploy.sh
 ```
 
+### Deploy on Homelab VPS (Docker Compose + Cloudflare Tunnel)
+
+See **[DEPLOYMENT.md](DEPLOYMENT.md)** for a full guide: clone, `.env` setup, frontend build, `docker compose up`, and cloudflared configuration.
+
 ---
 
 ## 🔐 Security Model

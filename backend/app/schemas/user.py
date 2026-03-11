@@ -123,6 +123,8 @@ class UserResponse(BaseModel):
     """User data returned to frontend (safe to expose)"""
     id: str
     email: str
+    displayName: str | None = None
+    avatarUrl: str | None = None
     createdAt: datetime
     
     class Config:
@@ -134,11 +136,34 @@ class UserResponse(BaseModel):
         return cls(
             id=user.id,
             email=user.email,
+            displayName=user.display_name,
+            avatarUrl=user.avatar_url,
             createdAt=user.created_at
         )
+
+
+class UpdateProfileRequest(BaseModel):
+    """Update user profile (non-crypto fields)"""
+    displayName: str | None = Field(None, max_length=100)
+    avatarUrl: str | None = Field(None, max_length=500_000)
 
 
 class SessionResponse(BaseModel):
     """Response after successful login/registration"""
     user: UserResponse
     sessionId: str
+
+
+class ChangePasswordRequest(BaseModel):
+    """
+    Change password request (zero-knowledge).
+
+    The client re-derives everything with the new password and sends
+    the updated encrypted blobs + proof.  The old proof is checked first.
+    """
+    oldProof: str = Field(..., min_length=32, description="SHA-256 hash of VaultKey (proves current password)")
+    salt: str = Field(..., min_length=32, description="New base64-encoded random salt")
+    kdfParams: KdfParams
+    encryptedVaultKey: EncryptedBlob
+    loginProof: str = Field(..., min_length=32, description="New SHA-256 hash of VaultKey")
+    encryptedPrivateKey: str = Field(..., min_length=32, description="Private key re-encrypted with new VaultKey")

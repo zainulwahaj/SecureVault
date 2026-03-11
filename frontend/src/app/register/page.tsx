@@ -3,13 +3,12 @@
 import { useState, type FormEvent, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
 import { Logo } from '@/components/ui/Logo';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Spinner } from '@/components/ui/spinner';
 import {
@@ -17,8 +16,6 @@ import {
   AlertTriangle,
   Check,
   X,
-  AlertCircle,
-  Info,
 } from 'lucide-react';
 
 function getPasswordStrength(password: string): { score: number; label: string; color: string } {
@@ -95,50 +92,49 @@ export default function RegisterPage() {
   }
 
   return (
-    <section className="bg-muted min-h-screen">
-      <div className="absolute top-4 right-4 z-10">
-        <ThemeToggle />
-      </div>
-      <div className="flex h-full min-h-screen items-center justify-center p-4">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="border-muted bg-background flex w-full max-w-sm flex-col items-center gap-y-6 rounded-md border px-6 py-10 shadow-md"
-        >
-          {/* Logo */}
-          <div className="flex flex-col items-center gap-y-2">
-            <Link href="/">
-              <Logo animated />
-            </Link>
-            <h1 className="text-2xl font-semibold text-foreground">Create your vault</h1>
-            <p className="text-sm text-muted-foreground text-center">Set up your secure encrypted storage</p>
-          </div>
+    <div className="flex min-h-screen">
+      <div className="flex flex-1 flex-col justify-center px-6 py-12 lg:px-16 xl:px-24">
+        <div className="absolute top-6 left-6">
+          <Link href="/">
+            <Logo size="sm" />
+          </Link>
+        </div>
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="flex w-full flex-col gap-4">
-            <Input
-              type="email"
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              disabled={isSubmitting}
-              required
-            />
+        <div className="mx-auto w-full max-w-sm">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            Create your vault
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Set up your secure encrypted storage
+          </p>
 
-            <div className="flex flex-col gap-2">
-              <div className="relative">
-                <Input
-                  type="password"
-                  placeholder="Master Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="new-password"
-                  disabled={isSubmitting}
-                  required
-                />
-              </div>
+          <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                disabled={isSubmitting}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="password">Master Password</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Create a strong password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+                disabled={isSubmitting}
+                required
+              />
               {password && (
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
@@ -147,53 +143,52 @@ export default function RegisterPage() {
                       {passwordStrength.label}
                     </span>
                   </div>
-                  <Progress value={passwordStrength.score} className="h-1.5" />
+                  <Progress value={passwordStrength.score} className="h-1" />
                 </div>
               )}
             </div>
 
-            <div className="relative">
-              <Input
-                type="password"
-                placeholder="Confirm Password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                autoComplete="new-password"
-                disabled={isSubmitting}
-                required
-              />
-              {passwordsMatch && (
-                <Check className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-green-500" />
-              )}
+            <div className="space-y-2">
+              <Label htmlFor="confirm">Confirm Password</Label>
+              <div className="relative">
+                <Input
+                  id="confirm"
+                  type="password"
+                  placeholder="Confirm your password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  autoComplete="new-password"
+                  disabled={isSubmitting}
+                  required
+                />
+                {passwordsMatch && (
+                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-green-500" />
+                )}
+                {passwordsDontMatch && (
+                  <X className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-red-500" />
+                )}
+              </div>
               {passwordsDontMatch && (
-                <X className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-red-500" />
+                <p className="text-xs text-destructive">Passwords do not match</p>
               )}
             </div>
-            {passwordsDontMatch && (
-              <p className="text-xs text-destructive -mt-2">Passwords do not match</p>
-            )}
 
             {error && (
-              <Alert variant="destructive">
-                <AlertCircle className="size-4" />
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
+              <p className="text-sm text-destructive">{error}</p>
             )}
 
             {status && !error && (
-              <Alert>
-                <Info className="size-4" />
-                <AlertDescription className="flex items-center gap-2">
-                  <Spinner className="size-3" />
-                  {status}
-                </AlertDescription>
-              </Alert>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Spinner className="size-3" />
+                {status}
+              </div>
             )}
 
             <Button
               type="submit"
               disabled={isSubmitting || !!passwordsDontMatch}
-              className="mt-2 w-full"
+              className="w-full rounded-full"
+              size="lg"
             >
               {isSubmitting ? (
                 <span className="flex items-center gap-2">
@@ -201,39 +196,53 @@ export default function RegisterPage() {
                   Creating Vault...
                 </span>
               ) : (
-                'Create Account'
+                'Create account'
               )}
             </Button>
           </form>
 
-          {/* Warnings */}
-          <div className="flex flex-col gap-3 w-full">
-            <div className="flex items-start gap-2 px-1">
-              <AlertTriangle className="size-4 text-amber-500 flex-shrink-0 mt-0.5" />
+          <div className="mt-6 space-y-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="size-4 text-amber-500 shrink-0 mt-0.5" />
               <p className="text-xs text-muted-foreground">
-                <strong className="font-semibold text-foreground">Important:</strong> If you forget your password, your data cannot be recovered.
+                <span className="font-medium text-foreground">Important:</span> If you forget your password, your data cannot be recovered.
               </p>
             </div>
-            <div className="flex items-start gap-2 px-1">
-              <ShieldCheck className="size-4 text-primary flex-shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2">
+              <ShieldCheck className="size-4 text-primary shrink-0 mt-0.5" />
               <p className="text-xs text-muted-foreground">
-                <strong className="font-semibold text-foreground">Zero-Knowledge:</strong> All encryption happens locally in your browser.
+                <span className="font-medium text-foreground">Zero-Knowledge:</span> All encryption happens locally in your browser.
               </p>
             </div>
           </div>
 
-          {/* Login link */}
-          <div className="text-muted-foreground flex justify-center gap-1 text-sm">
-            <p>Already have an account?</p>
-            <Link
-              href="/login"
-              className="text-primary font-medium hover:underline"
-            >
+          <p className="mt-8 text-center text-sm text-muted-foreground">
+            Already have an account?{' '}
+            <Link href="/login" className="font-medium text-primary hover:underline">
               Sign in
             </Link>
-          </div>
-        </motion.div>
+          </p>
+        </div>
       </div>
-    </section>
+
+      <div className="relative hidden lg:block lg:flex-1 p-3 pl-0">
+        <div className="absolute top-6 right-6 flex items-center gap-2 z-10">
+          <ThemeToggle />
+          <Link href="/login">
+            <Button variant="secondary" className="rounded-full" size="sm">
+              Log in
+            </Button>
+          </Link>
+        </div>
+
+        <div className="relative w-full h-full rounded-2xl overflow-hidden">
+          <img
+            src="/auth-hero.png"
+            alt="SecureVault — your files, always encrypted"
+            className="absolute inset-0 w-full h-full object-cover object-right"
+          />
+        </div>
+      </div>
+    </div>
   );
 }

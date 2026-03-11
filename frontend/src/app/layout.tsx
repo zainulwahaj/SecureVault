@@ -12,6 +12,10 @@ export const metadata: Metadata = {
     'A zero-knowledge secure file vault where all encryption happens client-side. Your files, your keys, your privacy.',
   keywords: ['encryption', 'secure', 'vault', 'files', 'privacy', 'zero-knowledge'],
   authors: [{ name: 'SecureVault' }],
+  icons: {
+    icon: '/favicon.svg',
+    apple: '/favicon.svg',
+  },
 };
 
 export const viewport: Viewport = {
