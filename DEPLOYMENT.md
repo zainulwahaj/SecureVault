@@ -185,4 +185,10 @@ Keep `file_storage` and the DB backup safe; without them, data cannot be restore
 
 ---
 
+## 10. CI/CD with Jenkins
+
+To automate build and deploy on push to `vault-v2`, see [docs/JENKINS_SETUP.md](docs/JENKINS_SETUP.md).
+
+---
+
 Once the stack is up and the tunnel is pointing at Nginx, you can use SecureVault at `https://vault.yourdomain.com` with zero-knowledge encryption and all data on your own server.
