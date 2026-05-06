@@ -1,105 +1,86 @@
 """
-Session Management Service
+Session Management Service — Redis-backed
 
-Handles creation, validation, and destruction of user sessions.
-
-SECURITY NOTE:
-- Sessions are for authorization only
-- Sessions do NOT contain or grant access to encryption keys
-- All cryptographic operations happen client-side
+Sessions are stored in Redis with automatic TTL expiry.
+Session tokens authorize API requests but do NOT grant access
+to encryption keys — all cryptographic operations happen client-side.
 """
 
-from datetime import datetime
+import json
+import secrets
+from datetime import datetime, timezone
 from typing import Optional
+from redis import Redis
 from sqlalchemy.orm import Session as DBSession
-from app.models.session import Session
 from app.models.user import User
+from app.config import get_settings
+
+settings = get_settings()
+
+_redis: Optional[Redis] = None
+
+
+def get_redis() -> Redis:
+    """Get or create the module-level Redis connection."""
+    global _redis
+    if _redis is None:
+        _redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+    return _redis
+
+
+def set_redis(client: Redis) -> None:
+    """Override the module-level Redis client (used during startup)."""
+    global _redis
+    _redis = client
+
+
+SESSION_PREFIX = "session:"
+SESSION_TTL = settings.SESSION_EXPIRE_HOURS * 3600
 
 
 class SessionService:
-    """Service for managing user sessions"""
-    
+    """Redis-backed session management."""
+
     def __init__(self, db: DBSession):
         self.db = db
-    
-    def create_session(self, user: User) -> Session:
-        """
-        Create a new session for a user.
-        
-        Returns a Session object with a secure random token.
-        """
-        session = Session(user_id=user.id)
-        self.db.add(session)
-        self.db.commit()
-        self.db.refresh(session)
-        return session
-    
-    def get_session_by_token(self, token: str) -> Optional[Session]:
-        """
-        Retrieve a session by its token.
-        
-        Returns None if session doesn't exist or is expired.
-        """
-        session = self.db.query(Session).filter(Session.token == token).first()
-        
-        if session is None:
-            return None
-        
-        # Check expiration
-        if session.is_expired:
-            self.delete_session(session)
-            return None
-        
-        return session
-    
+        self.r = get_redis()
+
+    def create_session(self, user: User) -> "SessionData":
+        token = secrets.token_urlsafe(32)
+        payload = json.dumps({
+            "user_id": user.id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        self.r.setex(f"{SESSION_PREFIX}{token}", SESSION_TTL, payload)
+        return SessionData(token=token, user_id=user.id)
+
     def get_user_from_token(self, token: str) -> Optional[User]:
-        """
-        Get the user associated with a session token.
-        
-        Returns None if session is invalid or expired.
-        """
-        session = self.get_session_by_token(token)
-        if session is None:
+        raw = self.r.get(f"{SESSION_PREFIX}{token}")
+        if raw is None:
             return None
-        return session.user
-    
-    def delete_session(self, session: Session) -> None:
-        """Delete a session (logout)"""
-        self.db.delete(session)
-        self.db.commit()
-    
+        data = json.loads(raw)
+        return self.db.query(User).filter(User.id == data["user_id"]).first()
+
     def delete_session_by_token(self, token: str) -> bool:
-        """
-        Delete a session by its token.
-        
-        Returns True if session was found and deleted, False otherwise.
-        """
-        session = self.db.query(Session).filter(Session.token == token).first()
-        if session:
-            self.db.delete(session)
-            self.db.commit()
-            return True
-        return False
-    
+        return self.r.delete(f"{SESSION_PREFIX}{token}") > 0
+
     def delete_all_user_sessions(self, user_id: str) -> int:
-        """
-        Delete all sessions for a user (logout from all devices).
-        
-        Returns the number of sessions deleted.
-        """
-        count = self.db.query(Session).filter(Session.user_id == user_id).delete()
-        self.db.commit()
+        """Delete every session belonging to a user (scan-based)."""
+        count = 0
+        for key in self.r.scan_iter(f"{SESSION_PREFIX}*"):
+            raw = self.r.get(key)
+            if raw:
+                data = json.loads(raw)
+                if data.get("user_id") == user_id:
+                    self.r.delete(key)
+                    count += 1
         return count
-    
-    def cleanup_expired_sessions(self) -> int:
-        """
-        Remove all expired sessions from the database.
-        
-        Should be called periodically (e.g., via cron job).
-        Returns the number of sessions deleted.
-        """
-        count = self.db.query(Session).filter(
-            Session.expires_at < datetime.utcnow()
-        ).delete()
-        self.db.commit()
-        return count
+
+
+class SessionData:
+    """Lightweight object returned after creating a session."""
+
+    def __init__(self, token: str, user_id: str):
+        self.token = token
+        self.id = token  # used by auth router for SessionResponse
+        self.user_id = user_id

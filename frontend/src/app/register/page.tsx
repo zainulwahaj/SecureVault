@@ -1,41 +1,24 @@
 'use client';
 
-/**
- * Registration Page - Zero-Knowledge Authentication
- * 
- * SECURITY:
- * 1. Generate random salt (client-side)
- * 2. Derive KEK from password + salt (client-side)
- * 3. Generate random VaultKey (client-side)
- * 4. Encrypt VaultKey with KEK (client-side)
- * 5. Send ONLY: email, salt, kdfParams, encryptedVaultKey
- * 6. Password NEVER leaves the browser
- */
-
 import { useState, type FormEvent, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
 import { Logo } from '@/components/ui/Logo';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Alert } from '@/components/ui/Alert';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
-import { ProgressBar } from '@/components/ui/ProgressBar';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
+import { Spinner } from '@/components/ui/spinner';
 import {
-  EnvelopeIcon,
-  LockClosedIcon,
-  ShieldCheckIcon,
-  ExclamationTriangleIcon,
-  UserPlusIcon,
-  CheckIcon,
-  XMarkIcon,
-} from '@heroicons/react/24/outline';
+  ShieldCheck,
+  AlertTriangle,
+  Check,
+  X,
+} from 'lucide-react';
 
-// Password strength checker
-function getPasswordStrength(password: string): { score: number; label: string; color: 'error' | 'warning' | 'success' | 'primary' } {
+function getPasswordStrength(password: string): { score: number; label: string; color: string } {
   let score = 0;
   if (password.length >= 8) score++;
   if (password.length >= 12) score++;
@@ -43,11 +26,11 @@ function getPasswordStrength(password: string): { score: number; label: string; 
   if (/[0-9]/.test(password)) score++;
   if (/[^a-zA-Z0-9]/.test(password)) score++;
 
-  if (score <= 1) return { score: 20, label: 'Weak', color: 'error' };
-  if (score === 2) return { score: 40, label: 'Fair', color: 'warning' };
-  if (score === 3) return { score: 60, label: 'Good', color: 'primary' };
-  if (score === 4) return { score: 80, label: 'Strong', color: 'success' };
-  return { score: 100, label: 'Excellent', color: 'success' };
+  if (score <= 1) return { score: 20, label: 'Weak', color: 'text-red-500' };
+  if (score === 2) return { score: 40, label: 'Fair', color: 'text-amber-500' };
+  if (score === 3) return { score: 60, label: 'Good', color: 'text-blue-500' };
+  if (score === 4) return { score: 80, label: 'Strong', color: 'text-green-500' };
+  return { score: 100, label: 'Excellent', color: 'text-green-500' };
 }
 
 export default function RegisterPage() {
@@ -57,7 +40,7 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   const { register } = useAuth();
   const router = useRouter();
 
@@ -72,41 +55,28 @@ export default function RegisterPage() {
     setIsSubmitting(true);
 
     try {
-      // Validate inputs
       if (!email || !password || !confirmPassword) {
         setError('Please fill in all fields');
         return;
       }
-
       if (password.length < 8) {
         setError('Password must be at least 8 characters');
         return;
       }
-
       if (password !== confirmPassword) {
         setError('Passwords do not match');
         return;
       }
-
-      // Basic email validation
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
         setError('Please enter a valid email address');
         return;
       }
 
-      // Show progress (crypto can take a moment)
       setStatus('Generating encryption keys...');
 
-      /**
-       * ZERO-KNOWLEDGE REGISTRATION:
-       * 1. Generate salt + VaultKey (random, client-side)
-       * 2. Derive KEK from password (client-side PBKDF2)
-       * 3. Encrypt VaultKey with KEK (XChaCha20-Poly1305)
-       * 4. Send encrypted data to backend (no password!)
-       */
       const result = await register(email, password);
-      
+
       if (result.success) {
         setStatus('Success! Redirecting...');
         router.push('/dashboard');
@@ -122,182 +92,157 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-      {/* Header */}
-      <header className="px-4 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+    <div className="flex min-h-screen">
+      <div className="flex flex-1 flex-col justify-center px-6 py-12 lg:px-16 xl:px-24">
+        <div className="absolute top-6 left-6">
           <Link href="/">
-            <Logo animated />
+            <Logo size="sm" />
           </Link>
-          <ThemeToggle />
         </div>
-      </header>
 
-      {/* Main Content */}
-      <main className="flex-1 flex items-center justify-center p-4">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="w-full max-w-md"
-        >
-          <Card variant="elevated" className="overflow-hidden">
-            <CardHeader className="text-center pb-2">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
-                className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center mb-4 shadow-glow"
-              >
-                <UserPlusIcon className="w-8 h-8 text-white" />
-              </motion.div>
-              <CardTitle className="text-2xl">Create Your Vault</CardTitle>
-              <CardDescription>Set up your secure encrypted storage</CardDescription>
-            </CardHeader>
+        <div className="mx-auto w-full max-w-sm">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            Create your vault
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Set up your secure encrypted storage
+          </p>
 
-            <CardContent className="pt-4">
-              <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                disabled={isSubmitting}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="password">Master Password</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Create a strong password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+                disabled={isSubmitting}
+                required
+              />
+              {password && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Strength</span>
+                    <span className={`font-medium ${passwordStrength.color}`}>
+                      {passwordStrength.label}
+                    </span>
+                  </div>
+                  <Progress value={passwordStrength.score} className="h-1" />
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="confirm">Confirm Password</Label>
+              <div className="relative">
                 <Input
-                  id="email"
-                  type="email"
-                  label="Email Address"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  autoComplete="email"
+                  id="confirm"
+                  type="password"
+                  placeholder="Confirm your password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  autoComplete="new-password"
                   disabled={isSubmitting}
-                  leftIcon={<EnvelopeIcon className="w-5 h-5" />}
+                  required
                 />
-
-                <div className="space-y-2">
-                  <Input
-                    id="password"
-                    type="password"
-                    label="Master Password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    autoComplete="new-password"
-                    disabled={isSubmitting}
-                    leftIcon={<LockClosedIcon className="w-5 h-5" />}
-                  />
-                  {password && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      className="space-y-2"
-                    >
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-500 dark:text-slate-400">Password strength</span>
-                        <span className={`font-medium ${
-                          passwordStrength.color === 'error' ? 'text-error-500' :
-                          passwordStrength.color === 'warning' ? 'text-warning-500' :
-                          passwordStrength.color === 'success' ? 'text-success-500' :
-                          'text-primary-500'
-                        }`}>
-                          {passwordStrength.label}
-                        </span>
-                      </div>
-                      <ProgressBar 
-                        value={passwordStrength.score} 
-                        color={passwordStrength.color}
-                        size="sm"
-                        animated
-                      />
-                    </motion.div>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Input
-                    id="confirmPassword"
-                    type="password"
-                    label="Confirm Password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="••••••••"
-                    autoComplete="new-password"
-                    disabled={isSubmitting}
-                    leftIcon={<LockClosedIcon className="w-5 h-5" />}
-                    rightIcon={
-                      passwordsMatch ? (
-                        <CheckIcon className="w-5 h-5 text-success-500" />
-                      ) : passwordsDontMatch ? (
-                        <XMarkIcon className="w-5 h-5 text-error-500" />
-                      ) : null
-                    }
-                    error={passwordsDontMatch ? 'Passwords do not match' : undefined}
-                  />
-                </div>
-
-                {error && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                  >
-                    <Alert variant="error" onClose={() => setError('')}>
-                      {error}
-                    </Alert>
-                  </motion.div>
+                {passwordsMatch && (
+                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-green-500" />
                 )}
-
-                {status && !error && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                  >
-                    <Alert variant="info">
-                      {status}
-                    </Alert>
-                  </motion.div>
+                {passwordsDontMatch && (
+                  <X className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-red-500" />
                 )}
-
-                <Button
-                  type="submit"
-                  disabled={isSubmitting || !!passwordsDontMatch}
-                  loading={isSubmitting}
-                  className="w-full"
-                  size="lg"
-                >
-                  {isSubmitting ? 'Creating Vault...' : 'Create Account'}
-                </Button>
-              </form>
-
-              {/* Warning about password */}
-              <div className="mt-6 p-4 rounded-xl bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-800">
-                <div className="flex items-start gap-3">
-                  <ExclamationTriangleIcon className="w-5 h-5 text-warning-600 dark:text-warning-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-warning-700 dark:text-warning-300">
-                    <strong className="font-semibold">Important:</strong> Your password encrypts your vault key. 
-                    We never store or see your password. <strong>If you forget it, your data cannot be recovered.</strong>
-                  </p>
-                </div>
               </div>
+              {passwordsDontMatch && (
+                <p className="text-xs text-destructive">Passwords do not match</p>
+              )}
+            </div>
 
-              {/* Zero-knowledge info */}
-              <div className="mt-3 p-4 rounded-xl bg-primary-50 dark:bg-primary-900/20 border border-primary-100 dark:border-primary-800">
-                <div className="flex items-start gap-3">
-                  <ShieldCheckIcon className="w-5 h-5 text-primary-600 dark:text-primary-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-primary-700 dark:text-primary-300">
-                    <strong className="font-semibold">Zero-Knowledge:</strong> Your password never leaves this browser. 
-                    All encryption happens locally on your device.
-                  </p>
-                </div>
+            {error && (
+              <p className="text-sm text-destructive">{error}</p>
+            )}
+
+            {status && !error && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Spinner className="size-3" />
+                {status}
               </div>
+            )}
 
-              <p className="mt-6 text-center text-sm text-slate-600 dark:text-slate-400">
-                Already have an account?{' '}
-                <Link 
-                  href="/login" 
-                  className="font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 transition-colors"
-                >
-                  Sign in
-                </Link>
+            <Button
+              type="submit"
+              disabled={isSubmitting || !!passwordsDontMatch}
+              className="w-full rounded-full"
+              size="lg"
+            >
+              {isSubmitting ? (
+                <span className="flex items-center gap-2">
+                  <Spinner className="size-4" />
+                  Creating Vault...
+                </span>
+              ) : (
+                'Create account'
+              )}
+            </Button>
+          </form>
+
+          <div className="mt-6 space-y-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="size-4 text-amber-500 shrink-0 mt-0.5" />
+              <p className="text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">Important:</span> If you forget your password, your data cannot be recovered.
               </p>
-            </CardContent>
-          </Card>
-        </motion.div>
-      </main>
+            </div>
+            <div className="flex items-start gap-2">
+              <ShieldCheck className="size-4 text-primary shrink-0 mt-0.5" />
+              <p className="text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">Zero-Knowledge:</span> All encryption happens locally in your browser.
+              </p>
+            </div>
+          </div>
+
+          <p className="mt-8 text-center text-sm text-muted-foreground">
+            Already have an account?{' '}
+            <Link href="/login" className="font-medium text-primary hover:underline">
+              Sign in
+            </Link>
+          </p>
+        </div>
+      </div>
+
+      <div className="relative hidden lg:block lg:flex-1 p-3 pl-0">
+        <div className="absolute top-6 right-6 flex items-center gap-2 z-10">
+          <ThemeToggle />
+          <Link href="/login">
+            <Button variant="secondary" className="rounded-full" size="sm">
+              Log in
+            </Button>
+          </Link>
+        </div>
+
+        <div className="relative w-full h-full rounded-2xl overflow-hidden">
+          <img
+            src="/auth-hero.png"
+            alt="SecureVault — your files, always encrypted"
+            className="absolute inset-0 w-full h-full object-cover object-right"
+          />
+        </div>
+      </div>
     </div>
   );
 }

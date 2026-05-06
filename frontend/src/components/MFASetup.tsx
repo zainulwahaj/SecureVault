@@ -1,31 +1,29 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
 import { setupMFA as setupMFAApi, getMFAStatus, disableMFA } from '@/lib/api';
 import { setupMFA, verifyTOTPCode } from '@/lib/crypto';
-import { Button } from '@/components/ui/Button';
-import { Alert } from '@/components/ui/Alert';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { Spinner } from '@/components/ui/Spinner';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
+import { Spinner } from '@/components/ui/spinner';
+import { cn } from '@/lib/utils';
 import {
-  ShieldCheckIcon,
-  DevicePhoneMobileIcon,
-  KeyIcon,
-  CheckCircleIcon,
-  ExclamationTriangleIcon,
-  ClipboardDocumentIcon,
-  XMarkIcon,
-  ArrowLeftIcon,
-} from '@heroicons/react/24/outline';
+  ShieldCheck,
+  CheckCircle,
+  AlertTriangle,
+  ClipboardCopy,
+  X,
+} from 'lucide-react';
 
 interface MFASetupProps {
   onClose?: () => void;
 }
 
-type SetupStep = 'initial' | 'qrcode' | 'verify' | 'recovery' | 'complete';
+type SetupStep = 'initial' | 'stepper' | 'recovery' | 'complete';
 
 export default function MFASetup({ onClose }: MFASetupProps) {
   const { user, vaultKey } = useAuth();
@@ -33,20 +31,17 @@ export default function MFASetup({ onClose }: MFASetupProps) {
   const [mfaEnabled, setMfaEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  // Setup state
+
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
   const [mfaSecret, setMfaSecret] = useState<string | null>(null);
   const [encryptedSecret, setEncryptedSecret] = useState<any>(null);
   const [verificationCode, setVerificationCode] = useState('');
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [recoveryCodesHash, setRecoveryCodesHash] = useState<string[]>([]);
-  
-  // Disable state
+
   const [disableCode, setDisableCode] = useState('');
   const [showDisable, setShowDisable] = useState(false);
 
-  // Check current MFA status
   useEffect(() => {
     checkMFAStatus();
   }, []);
@@ -60,7 +55,6 @@ export default function MFASetup({ onClose }: MFASetupProps) {
     setLoading(false);
   }
 
-  // Start MFA setup
   async function startSetup() {
     if (!vaultKey || !user) {
       setError('No vault key available. Please log in again.');
@@ -71,9 +65,8 @@ export default function MFASetup({ onClose }: MFASetupProps) {
     setLoading(true);
 
     try {
-      // Generate TOTP secret and encrypt it
       const result = await setupMFA(user.email, vaultKey);
-      
+
       if (!result.success || !result.data) {
         setError(result.error || 'Failed to generate MFA secret');
         return;
@@ -86,7 +79,7 @@ export default function MFASetup({ onClose }: MFASetupProps) {
       setRecoveryCodes(setupData.recoveryCodes);
       setRecoveryCodesHash(setupData.recoveryCodesHash);
 
-      setStep('qrcode');
+      setStep('stepper');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate MFA secret');
     } finally {
@@ -94,28 +87,22 @@ export default function MFASetup({ onClose }: MFASetupProps) {
     }
   }
 
-  // Verify the TOTP code
-  async function handleVerify() {
-    if (!mfaSecret || !encryptedSecret || verificationCode.length !== 6) {
-      setError('Please enter a valid 6-digit code');
-      return;
-    }
+  async function handleVerify(code: string) {
+    if (!mfaSecret || !encryptedSecret || code.length !== 6) return;
 
     setError(null);
     setLoading(true);
 
     try {
-      // Verify the code locally first
-      const isValid = verifyTOTPCode(mfaSecret, verificationCode);
+      const isValid = verifyTOTPCode(mfaSecret, code);
       if (!isValid) {
         setError('Invalid verification code. Please try again.');
+        setVerificationCode('');
         setLoading(false);
         return;
       }
 
-      // Send to backend
-      const result = await setupMFAApi(encryptedSecret, recoveryCodesHash, verificationCode);
-      
+      const result = await setupMFAApi(encryptedSecret, recoveryCodesHash, code);
       if (result.success) {
         setStep('recovery');
       } else {
@@ -128,17 +115,14 @@ export default function MFASetup({ onClose }: MFASetupProps) {
     }
   }
 
-  // Complete setup
   function completeSetup() {
     setMfaEnabled(true);
     setStep('complete');
-    // Clear sensitive data
     setMfaSecret(null);
     setEncryptedSecret(null);
     setRecoveryCodes([]);
   }
 
-  // Disable MFA
   async function handleDisableMFA() {
     if (disableCode.length !== 6) {
       setError('Please enter a valid 6-digit code');
@@ -165,7 +149,6 @@ export default function MFASetup({ onClose }: MFASetupProps) {
     }
   }
 
-  // Copy recovery codes to clipboard
   function copyRecoveryCodes() {
     const codesText = recoveryCodes.join('\n');
     navigator.clipboard.writeText(codesText);
@@ -173,347 +156,356 @@ export default function MFASetup({ onClose }: MFASetupProps) {
 
   if (loading && step === 'initial') {
     return (
-      <div className="p-8 flex items-center justify-center">
-        <Spinner size="lg" />
+      <div className="py-8 flex items-center justify-center">
+        <Spinner className="size-6" />
       </div>
     );
   }
 
-  return (
-    <div className="p-6 max-w-lg mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
-            <ShieldCheckIcon className="w-5 h-5 text-primary-600 dark:text-primary-400" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-              Two-Factor Authentication
-            </h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              Secure your account with 2FA
-            </p>
+  if (step === 'initial' && mfaEnabled && !showDisable) {
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <ShieldCheck className="size-5 text-primary" />
+            <div>
+              <h3 className="text-base font-semibold text-foreground">Two-Factor Authentication</h3>
+              <p className="text-sm text-muted-foreground">Secure your account with 2FA</p>
+            </div>
           </div>
         </div>
-        {onClose && (
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            <XMarkIcon className="w-5 h-5" />
-          </Button>
-        )}
-      </div>
 
-      {/* Error display */}
-      <AnimatePresence>
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="mb-4"
-          >
-            <Alert variant="error" onClose={() => setError(null)}>
-              {error}
-            </Alert>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Initial State - MFA Disabled */}
-      {step === 'initial' && !mfaEnabled && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="space-y-6"
-        >
-          <Card variant="bordered" className="bg-primary-50/50 dark:bg-primary-900/10 border-primary-200 dark:border-primary-800">
-            <CardContent className="p-4">
-              <div className="flex items-start gap-3">
-                <KeyIcon className="w-5 h-5 text-primary-600 dark:text-primary-400 flex-shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="font-semibold text-primary-900 dark:text-primary-100 mb-1">
-                    Zero-Knowledge 2FA
-                  </h3>
-                  <p className="text-sm text-primary-700 dark:text-primary-300">
-                    Your 2FA secret is encrypted with your VaultKey before being stored. 
-                    The server never sees your actual TOTP secret.
-                  </p>
-                </div>
+        <Card className="border-green-500/20">
+          <CardContent className="p-4 flex items-center gap-3">
+            <CheckCircle className="size-5 text-green-600 dark:text-green-400 shrink-0" />
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-foreground">2FA Enabled</span>
+                <Badge className="bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20 text-xs">Active</Badge>
               </div>
-            </CardContent>
-          </Card>
+              <p className="text-sm text-muted-foreground">Your account is protected with two-factor authentication.</p>
+            </div>
+          </CardContent>
+        </Card>
 
-          <div className="space-y-3">
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800">
-              <div className="w-8 h-8 rounded-lg bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-sm font-semibold text-primary-600">1</div>
-              <p className="text-sm text-slate-600 dark:text-slate-300">Scan QR code with authenticator app</p>
-            </div>
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800">
-              <div className="w-8 h-8 rounded-lg bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-sm font-semibold text-primary-600">2</div>
-              <p className="text-sm text-slate-600 dark:text-slate-300">Enter verification code</p>
-            </div>
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800">
-              <div className="w-8 h-8 rounded-lg bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-sm font-semibold text-primary-600">3</div>
-              <p className="text-sm text-slate-600 dark:text-slate-300">Save recovery codes</p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowDisable(true)}
+          className="mt-4 text-destructive border-destructive/30 hover:bg-destructive/10"
+        >
+          Disable 2FA
+        </Button>
+      </div>
+    );
+  }
+
+  if (step === 'initial' && showDisable) {
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <ShieldCheck className="size-5 text-primary" />
+            <div>
+              <h3 className="text-base font-semibold text-foreground">Disable 2FA</h3>
+              <p className="text-sm text-muted-foreground">Enter your authenticator code to disable</p>
             </div>
           </div>
+        </div>
 
-          <Button
-            onClick={startSetup}
-            disabled={loading}
-            loading={loading}
-            className="w-full"
-            size="lg"
+        {error && (
+          <div className="mb-4 flex items-center justify-between rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            <span>{error}</span>
+            <button onClick={() => setError(null)} className="hover:opacity-70"><X className="size-4" /></button>
+          </div>
+        )}
+
+        <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 mb-4">
+          <AlertTriangle className="size-4 text-amber-500 shrink-0 mt-0.5" />
+          <p className="text-sm text-muted-foreground">
+            Disabling 2FA will make your account less secure.
+          </p>
+        </div>
+
+        <div className="flex justify-center mb-4">
+          <InputOTP
+            maxLength={6}
+            value={disableCode}
+            onChange={(val) => setDisableCode(val)}
           >
-            <DevicePhoneMobileIcon className="w-5 h-5" />
-            Enable Two-Factor Authentication
-          </Button>
-        </motion.div>
-      )}
+            <InputOTPGroup className="gap-2">
+              <InputOTPSlot index={0} className="border rounded-lg" />
+              <InputOTPSlot index={1} className="border rounded-lg" />
+              <InputOTPSlot index={2} className="border rounded-lg" />
+              <InputOTPSlot index={3} className="border rounded-lg" />
+              <InputOTPSlot index={4} className="border rounded-lg" />
+              <InputOTPSlot index={5} className="border rounded-lg" />
+            </InputOTPGroup>
+          </InputOTP>
+        </div>
 
-      {/* Initial State - MFA Enabled */}
-      {step === 'initial' && mfaEnabled && !showDisable && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="space-y-6"
-        >
-          <Card variant="bordered" className="bg-success-50/50 dark:bg-success-900/10 border-success-200 dark:border-success-800">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-success-100 dark:bg-success-900/30 flex items-center justify-center">
-                  <CheckCircleIcon className="w-7 h-7 text-success-600 dark:text-success-400" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-success-900 dark:text-success-100">
-                      2FA Enabled
-                    </h3>
-                    <Badge variant="success" size="sm">Active</Badge>
-                  </div>
-                  <p className="text-sm text-success-700 dark:text-success-300">
-                    Your account is protected with two-factor authentication.
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
+        <div className="flex gap-2">
           <Button
             variant="outline"
-            onClick={() => setShowDisable(true)}
-            className="w-full border-error-300 text-error-600 hover:bg-error-50 dark:border-error-700 dark:text-error-400 dark:hover:bg-error-900/20"
+            size="sm"
+            onClick={() => { setShowDisable(false); setDisableCode(''); setError(null); }}
+            className="flex-1"
           >
-            Disable Two-Factor Authentication
+            Cancel
           </Button>
-        </motion.div>
-      )}
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleDisableMFA}
+            disabled={loading || disableCode.length !== 6}
+            className="flex-1"
+          >
+            {loading ? <><Spinner className="size-4 mr-2" /> Disabling...</> : 'Disable 2FA'}
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
-      {/* Disable MFA */}
-      {step === 'initial' && showDisable && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="space-y-6"
-        >
-          <Alert variant="warning">
-            <strong>Warning:</strong> Disabling 2FA will make your account less secure.
-          </Alert>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-              Enter your current 2FA code to disable
-            </label>
-            <input
-              type="text"
-              value={disableCode}
-              onChange={(e) => setDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              placeholder="000000"
-              className="w-full px-4 py-4 text-center text-2xl tracking-[0.5em] font-mono border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-error-500 focus:border-error-500 transition-all"
-              maxLength={6}
-            />
-          </div>
-
-          <div className="flex gap-3">
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setShowDisable(false);
-                setDisableCode('');
-                setError(null);
-              }}
-              className="flex-1"
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              onClick={handleDisableMFA}
-              disabled={loading || disableCode.length !== 6}
-              loading={loading}
-              className="flex-1"
-            >
-              Disable 2FA
-            </Button>
-          </div>
-        </motion.div>
-      )}
-
-      {/* QR Code Step */}
-      {step === 'qrcode' && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="space-y-6"
-        >
-          <p className="text-slate-600 dark:text-slate-300">
-            Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
-          </p>
-
-          {qrCodeDataUrl && (
-            <div className="flex justify-center p-6 bg-white rounded-2xl shadow-soft">
-              <img src={qrCodeDataUrl} alt="MFA QR Code" className="w-48 h-48" />
+  if (step === 'recovery') {
+    return (
+      <Card className="flex w-full max-w-[500px] mx-auto shadow-none flex-col gap-6 p-5 md:p-8">
+        <CardHeader className="flex flex-col items-center gap-2 p-0">
+          <div className="relative flex size-[68px] shrink-0 items-center justify-center rounded-full backdrop-blur-xl md:size-24 before:absolute before:inset-0 before:rounded-full before:bg-gradient-to-b before:from-amber-500 before:to-transparent before:opacity-10">
+            <div className="relative z-10 flex size-12 items-center justify-center rounded-full bg-background dark:bg-muted/80 shadow-xs ring-1 ring-inset ring-border md:size-16">
+              <AlertTriangle className="size-6 text-amber-500 md:size-8" />
             </div>
-          )}
+          </div>
 
-          <Card variant="bordered" className="bg-slate-50 dark:bg-slate-800">
-            <CardContent className="p-4">
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
-                Or enter this code manually:
-              </p>
-              <code className="block text-sm font-mono text-slate-900 dark:text-white break-all bg-white dark:bg-slate-900 p-3 rounded-lg">
-                {mfaSecret}
+          <div className="flex flex-col space-y-1.5 text-center">
+            <CardTitle className="md:text-xl font-medium">Save Recovery Codes</CardTitle>
+            <CardDescription className="tracking-[-0.006em]">
+              Each code can only be used once. You won&apos;t see these again.
+            </CardDescription>
+          </div>
+        </CardHeader>
+
+        <Separator />
+
+        <CardContent className="p-0 space-y-4">
+          <div className="grid grid-cols-2 gap-2">
+            {recoveryCodes.map((code, index) => (
+              <code
+                key={index}
+                className="text-sm font-mono text-foreground bg-muted p-2.5 rounded text-center"
+              >
+                {code}
               </code>
-            </CardContent>
-          </Card>
-
-          <Button
-            onClick={() => setStep('verify')}
-            className="w-full"
-            size="lg"
-          >
-            I&apos;ve scanned the code
-          </Button>
-        </motion.div>
-      )}
-
-      {/* Verify Step */}
-      {step === 'verify' && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="space-y-6"
-        >
-          <p className="text-slate-600 dark:text-slate-300">
-            Enter the 6-digit code from your authenticator app to verify setup:
-          </p>
-
-          <input
-            type="text"
-            value={verificationCode}
-            onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-            placeholder="000000"
-            className="w-full px-4 py-4 text-center text-3xl tracking-[0.5em] font-mono border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
-            maxLength={6}
-            autoFocus
-          />
-
-          <div className="flex gap-3">
-            <Button
-              variant="secondary"
-              onClick={() => setStep('qrcode')}
-              className="flex-1"
-            >
-              <ArrowLeftIcon className="w-4 h-4" />
-              Back
-            </Button>
-            <Button
-              onClick={handleVerify}
-              disabled={loading || verificationCode.length !== 6}
-              loading={loading}
-              className="flex-1"
-            >
-              Verify
-            </Button>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Recovery Codes Step */}
-      {step === 'recovery' && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="space-y-6"
-        >
-          <Alert variant="warning">
-            <strong>Save these recovery codes!</strong> Each code can only be used once. You won&apos;t be able to see these again.
-          </Alert>
-
-          <div className="bg-slate-100 dark:bg-slate-800 p-4 rounded-xl">
-            <div className="grid grid-cols-2 gap-2">
-              {recoveryCodes.map((code, index) => (
-                <code
-                  key={index}
-                  className="text-sm font-mono text-slate-900 dark:text-white bg-white dark:bg-slate-700 p-3 rounded-lg text-center"
-                >
-                  {code}
-                </code>
-              ))}
-            </div>
+            ))}
           </div>
 
-          <Button
-            variant="secondary"
-            onClick={copyRecoveryCodes}
-            className="w-full"
-          >
-            <ClipboardDocumentIcon className="w-5 h-5" />
+          <Button variant="outline" size="sm" onClick={copyRecoveryCodes} className="w-full">
+            <ClipboardCopy className="size-4 mr-2" />
             Copy Recovery Codes
           </Button>
 
-          <Button
-            onClick={completeSetup}
-            className="w-full bg-success-600 hover:bg-success-700"
-            size="lg"
-          >
-            <CheckCircleIcon className="w-5 h-5" />
+          <Button onClick={completeSetup} className="w-full">
+            <CheckCircle className="size-4 mr-2" />
             I&apos;ve saved my recovery codes
           </Button>
-        </motion.div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (step === 'complete') {
+    return (
+      <Card className="flex w-full max-w-[500px] mx-auto shadow-none flex-col gap-6 p-5 md:p-8">
+        <div className="space-y-4 text-center py-6">
+          <div className="mx-auto size-16 rounded-full bg-green-500/10 flex items-center justify-center">
+            <CheckCircle className="size-8 text-green-600 dark:text-green-400" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-foreground mb-1">2FA Enabled</h3>
+            <p className="text-sm text-muted-foreground">Your account is now protected with two-factor authentication.</p>
+          </div>
+          {onClose && (
+            <Button onClick={onClose} className="w-full">Done</Button>
+          )}
+        </div>
+      </Card>
+    );
+  }
+
+  const STEPS = [
+    {
+      title: 'Download app',
+      description: 'Download a mobile authentication app like Google Authenticator or Authy.',
+    },
+    {
+      title: 'Scan QR code',
+      description: 'Scan this QR code using your authenticator app. This will generate a verification code.',
+      content: qrCodeDataUrl ? (
+        <div className="space-y-3">
+          <div className="inline-block p-2 border rounded-lg bg-white">
+            <img src={qrCodeDataUrl} alt="MFA QR Code" className="size-32" />
+          </div>
+          {mfaSecret && (
+            <div className="rounded-lg border border-border p-3">
+              <p className="text-xs text-muted-foreground mb-1.5">Or enter manually:</p>
+              <code className="block text-xs font-mono text-foreground break-all bg-muted p-2 rounded">
+                {mfaSecret}
+              </code>
+            </div>
+          )}
+        </div>
+      ) : null,
+    },
+    {
+      title: 'Enter code',
+      description: 'Enter the 6-digit verification code from your authenticator app.',
+      content: (
+        <InputOTP
+          maxLength={6}
+          value={verificationCode}
+          onChange={(val) => {
+            setVerificationCode(val);
+            if (val.length === 6) handleVerify(val);
+          }}
+        >
+          <InputOTPGroup className="gap-2.5">
+            <InputOTPSlot index={0} className="border rounded-lg" />
+            <InputOTPSlot index={1} className="border rounded-lg" />
+            <InputOTPSlot index={2} className="border rounded-lg" />
+            <InputOTPSlot index={3} className="border rounded-lg" />
+            <InputOTPSlot index={4} className="border rounded-lg" />
+            <InputOTPSlot index={5} className="border rounded-lg" />
+          </InputOTPGroup>
+        </InputOTP>
+      ),
+    },
+  ];
+
+  return (
+    <div>
+      {step === 'initial' && !mfaEnabled && (
+        <Card className="flex w-full max-w-[500px] mx-auto shadow-none flex-col gap-6 p-5 md:p-8">
+          <CardHeader className="flex flex-col items-center gap-2 p-0">
+            <div className="relative flex size-[68px] shrink-0 items-center justify-center rounded-full backdrop-blur-xl md:size-24 before:absolute before:inset-0 before:rounded-full before:bg-gradient-to-b before:from-neutral-500 before:to-transparent before:opacity-10">
+              <div className="relative z-10 flex size-12 items-center justify-center rounded-full bg-background dark:bg-muted/80 shadow-xs ring-1 ring-inset ring-border md:size-16">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="32"
+                  height="32"
+                  viewBox="0 0 24 24"
+                  className="size-6 text-muted-foreground/80 md:size-8"
+                >
+                  <path
+                    fill="currentColor"
+                    fillRule="evenodd"
+                    d="M3.378 5.082C3 5.62 3 7.22 3 10.417v1.574c0 5.638 4.239 8.375 6.899 9.536c.721.315 1.082.473 2.101.473c1.02 0 1.38-.158 2.101-.473C16.761 20.365 21 17.63 21 11.991v-1.574c0-3.198 0-4.797-.378-5.335c-.377-.537-1.88-1.052-4.887-2.081l-.573-.196C13.595 2.268 12.812 2 12 2s-1.595.268-3.162.805L8.265 3c-3.007 1.03-4.51 1.545-4.887 2.082M13.5 15a1 1 0 0 1-1 1h-1a1 1 0 0 1-1-1v-1.401A2.999 2.999 0 0 1 12 8a3 3 0 0 1 1.5 5.599z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </div>
+            </div>
+
+            <div className="flex flex-col space-y-1.5 text-center">
+              <CardTitle className="md:text-xl font-medium">
+                Enable Two-Factor Authentication
+              </CardTitle>
+              <CardDescription className="tracking-[-0.006em]">
+                Secure your account with an additional layer of protection.
+              </CardDescription>
+            </div>
+          </CardHeader>
+
+          <Separator />
+
+          <CardContent className="p-0">
+            <p className="text-sm text-muted-foreground mb-4">
+              Your 2FA secret is encrypted with your VaultKey before being stored. The server never sees your actual TOTP secret.
+            </p>
+            <Button onClick={startSetup} disabled={loading} className="w-full">
+              {loading ? <><Spinner className="size-4 mr-2" /> Setting up...</> : 'Get Started'}
+            </Button>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Complete Step */}
-      {step === 'complete' && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="space-y-6 text-center py-4"
-        >
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
-            className="mx-auto w-20 h-20 rounded-full bg-success-100 dark:bg-success-900/30 flex items-center justify-center"
-          >
-            <CheckCircleIcon className="w-10 h-10 text-success-600 dark:text-success-400" />
-          </motion.div>
+      {step === 'stepper' && (
+        <Card className="flex w-full max-w-[500px] mx-auto shadow-none flex-col gap-6 p-5 md:p-8">
+          <CardHeader className="flex flex-col items-center gap-2 p-0">
+            <div className="relative flex size-[68px] shrink-0 items-center justify-center rounded-full backdrop-blur-xl md:size-24 before:absolute before:inset-0 before:rounded-full before:bg-gradient-to-b before:from-neutral-500 before:to-transparent before:opacity-10">
+              <div className="relative z-10 flex size-12 items-center justify-center rounded-full bg-background dark:bg-muted/80 shadow-xs ring-1 ring-inset ring-border md:size-16">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="32"
+                  height="32"
+                  viewBox="0 0 24 24"
+                  className="size-6 text-muted-foreground/80 md:size-8"
+                >
+                  <path
+                    fill="currentColor"
+                    fillRule="evenodd"
+                    d="M3.378 5.082C3 5.62 3 7.22 3 10.417v1.574c0 5.638 4.239 8.375 6.899 9.536c.721.315 1.082.473 2.101.473c1.02 0 1.38-.158 2.101-.473C16.761 20.365 21 17.63 21 11.991v-1.574c0-3.198 0-4.797-.378-5.335c-.377-.537-1.88-1.052-4.887-2.081l-.573-.196C13.595 2.268 12.812 2 12 2s-1.595.268-3.162.805L8.265 3c-3.007 1.03-4.51 1.545-4.887 2.082M13.5 15a1 1 0 0 1-1 1h-1a1 1 0 0 1-1-1v-1.401A2.999 2.999 0 0 1 12 8a3 3 0 0 1 1.5 5.599z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </div>
+            </div>
 
-          <div>
-            <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">
-              Two-Factor Authentication Enabled!
-            </h3>
-            <p className="text-slate-600 dark:text-slate-300">
-              Your account is now protected with an additional layer of security.
-            </p>
-          </div>
+            <div className="flex flex-col space-y-1.5 text-center">
+              <CardTitle className="md:text-xl font-medium">
+                Enable Two-Factor Authentication
+              </CardTitle>
+              <CardDescription className="tracking-[-0.006em]">
+                Secure your account with an additional layer of protection.
+              </CardDescription>
+            </div>
+          </CardHeader>
 
-          {onClose && (
-            <Button onClick={onClose} className="w-full" size="lg">
-              Done
-            </Button>
+          <Separator />
+
+          {error && (
+            <div className="flex items-center justify-between rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+              <span>{error}</span>
+              <button onClick={() => setError(null)} className="hover:opacity-70"><X className="size-4" /></button>
+            </div>
           )}
-        </motion.div>
+
+          <CardContent className="p-0">
+            <div className="grid items-start justify-start grid-cols-1">
+              {STEPS.map((stepItem, index) => (
+                <div
+                  key={index}
+                  className={cn(
+                    'relative flex flex-row items-start gap-3 last:after:hidden after:absolute after:top-9 after:bottom-2 after:start-3.5 after:w-px after:-translate-x-[0.5px] after:bg-border',
+                    index !== STEPS.length - 1 && 'pb-6'
+                  )}
+                >
+                  <div className="flex flex-col items-center self-stretch">
+                    <span className="z-10 text-xs font-semibold flex shrink-0 items-center justify-center rounded-full bg-muted ring-1 ring-inset ring-border text-foreground size-7">
+                      {index + 1}
+                    </span>
+                  </div>
+                  <div className="flex flex-col items-start">
+                    <p className="text-sm leading-5 tracking-[-0.006em] font-semibold text-foreground">
+                      {stepItem.title}
+                    </p>
+                    <p className="text-sm leading-5 tracking-[-0.006em] text-muted-foreground">
+                      {stepItem.description}
+                    </p>
+                    {stepItem.content && (
+                      <div className="mt-2.5">{stepItem.content}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+
+          {loading && (
+            <div className="flex justify-center">
+              <Spinner className="size-5" />
+            </div>
+          )}
+        </Card>
       )}
     </div>
   );

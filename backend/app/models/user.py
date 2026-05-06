@@ -36,6 +36,8 @@ class User(Base):
     
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     email = Column(String(255), unique=True, nullable=False, index=True)
+    display_name = Column(String(100), nullable=True)
+    avatar_url = Column(Text, nullable=True)
     
     # Zero-Knowledge Auth Fields
     # Salt for PBKDF2 key derivation (base64 encoded)
@@ -76,8 +78,8 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # Relationships
-    sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
     files = relationship("File", back_populates="user", cascade="all, delete-orphan")
+    folders = relationship("Folder", back_populates="user", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<User {self.email}>"

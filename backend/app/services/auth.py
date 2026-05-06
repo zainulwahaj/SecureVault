@@ -12,8 +12,7 @@ import secrets
 from typing import Optional, Tuple, Dict, Any
 from sqlalchemy.orm import Session as DBSession
 from app.models.user import User
-from app.models.session import Session
-from app.services.session import SessionService
+from app.services.session import SessionService, SessionData
 
 
 class AuthService:
@@ -48,26 +47,10 @@ class AuthService:
         login_proof: str,
         public_key: str,
         encrypted_private_key: str
-    ) -> Tuple[Optional[User], Optional[Session], Optional[str]]:
+    ) -> Tuple[Optional[User], Optional[SessionData], Optional[str]]:
         """
         Register a new user with zero-knowledge authentication.
-        
-        SECURITY:
-        - No password received or processed
-        - encrypted_vault_key can only be decrypted client-side
-        - login_proof is hash of VaultKey (for later verification)
-        - public_key stored plaintext for envelope encryption
-        - encrypted_private_key encrypted with VaultKey
-        
-        Args:
-            email: User's email address
-            salt: Base64-encoded random salt for KDF
-            kdf_params: KDF parameters dict
-            encrypted_vault_key: Encrypted VaultKey blob
-            login_proof: SHA-256 hash of VaultKey
-            public_key: X25519 public key (base64)
-            encrypted_private_key: X25519 private key encrypted with VaultKey
-        
+
         Returns: (user, session, error_message)
         """
         email = email.lower().strip()
@@ -126,7 +109,7 @@ class AuthService:
         
         return challenge, None
     
-    def verify_login(self, email: str, proof: str) -> Tuple[Optional[User], Optional[Session], Optional[str]]:
+    def verify_login(self, email: str, proof: str) -> Tuple[Optional[User], Optional[SessionData], Optional[str]]:
         """
         Verify login by checking the decryption proof.
         

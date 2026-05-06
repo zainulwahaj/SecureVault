@@ -1,21 +1,13 @@
 """
 File Router - Zero-Knowledge Encrypted File Storage API
 
-SECURITY:
-- POST /upload: Accepts encrypted file + encrypted metadata
-- GET /: List files (returns encrypted metadata for client decryption)
-- GET /{file_id}: Download encrypted file content
-- DELETE /{file_id}: Delete file from storage
-
-Backend is cryptographically blind:
-- Cannot decrypt file contents
-- Cannot see original filenames
-- Cannot read file metadata
+Supports upload, list, download, delete, trash, restore, versioning, and move.
+Backend is cryptographically blind.
 """
 
 import json
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session as DBSession
 from app.database import get_db
@@ -29,6 +21,9 @@ from app.schemas import (
 )
 from app.services.file import FileService
 from app.services.sharing import SharingService
+from app.services.trash import TrashService
+from app.services.versioning import VersioningService
+from app.services.audit import AuditService
 from app.routers.auth import get_current_user
 from app.models.user import User
 
@@ -40,23 +35,16 @@ settings = get_settings()
 async def upload_file(
     file: UploadFile = File(..., description="Encrypted file content"),
     metadata: str = Form(..., description="JSON-encoded FileUploadMetadata"),
+    folder_id: Optional[str] = Form(None, description="Optional folder ID"),
     current_user: User = Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ):
     """
     Upload an encrypted file.
     
-    SECURITY:
-    - File content is already encrypted by client (secretstream)
-    - metadata contains encrypted FileKey, filename, and MIME type
-    - Backend stores only opaque encrypted blobs
-    - Backend CANNOT decrypt or inspect file contents
-    
-    Request:
-    - file: Multipart file upload (encrypted bytes)
-    - metadata: JSON string containing FileUploadMetadata
+    If a file with the same ID already exists (re-upload), the current content
+    is saved as a version before being overwritten.
     """
-    # Validate file size
     content = await file.read()
     if len(content) > settings.MAX_FILE_SIZE:
         raise HTTPException(
@@ -64,14 +52,12 @@ async def upload_file(
             detail=f"File too large. Maximum size is {settings.MAX_FILE_SIZE // (1024*1024)} MB"
         )
     
-    # Parse metadata
     try:
         metadata_dict = json.loads(metadata)
         parsed_metadata = FileUploadMetadata(**metadata_dict)
     except (json.JSONDecodeError, Exception) as e:
         raise HTTPException(status_code=400, detail=f"Invalid metadata: {str(e)}")
     
-    # Save file
     file_service = FileService(db)
     file_record, error = await file_service.save_file(
         user=current_user,
@@ -79,10 +65,18 @@ async def upload_file(
         encrypted_file_key=parsed_metadata.encryptedFileKey.model_dump(),
         encrypted_filename=parsed_metadata.encryptedFilename.model_dump(),
         encrypted_mime_type=parsed_metadata.encryptedMimeType.model_dump() if parsed_metadata.encryptedMimeType else None,
+        folder_id=folder_id,
     )
     
     if error:
         raise HTTPException(status_code=500, detail=error)
+
+    AuditService(db).log(
+        user_id=current_user.id,
+        action="file_upload",
+        resource_type="file",
+        resource_id=file_record.id,
+    )
     
     return FileUploadResponse(
         fileId=file_record.id,
@@ -93,20 +87,30 @@ async def upload_file(
 
 @router.get("/", response_model=FileListResponse)
 async def list_files(
+    folder_id: Optional[str] = Query(None, description="Filter by folder (null = root)"),
     current_user: User = Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ):
-    """
-    List all files for the authenticated user.
-    
-    SECURITY:
-    - Returns encrypted metadata only
-    - Client must decrypt filenames and metadata using VaultKey → FileKey
-    - Backend cannot see real filenames
-    """
+    """List non-trashed files for the authenticated user, optionally within a folder."""
     file_service = FileService(db)
-    files = file_service.list_files(current_user)
+    files = file_service.list_files(current_user, folder_id=folder_id)
     
+    return FileListResponse(
+        files=[FileListItem.from_orm_model(f) for f in files],
+        totalCount=len(files),
+    )
+
+
+# ─── Trash endpoints ─────────────────────────────────────────────────────
+
+@router.get("/trash/list", response_model=FileListResponse)
+async def list_trash(
+    current_user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """List all trashed files."""
+    trash_svc = TrashService(db)
+    files = trash_svc.list_trashed(current_user)
     return FileListResponse(
         files=[FileListItem.from_orm_model(f) for f in files],
         totalCount=len(files),
@@ -192,29 +196,155 @@ async def get_file_metadata(
 @router.delete("/{file_id}", response_model=FileDeleteResponse)
 async def delete_file(
     file_id: str,
+    permanent: bool = Query(False, description="Permanently delete instead of trashing"),
     current_user: User = Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ):
     """
-    Delete a file from storage.
-    
-    SECURITY:
-    - Verifies ownership before deletion
-    - Removes both file content and database record
+    Delete a file. Soft-deletes (trash) by default.
+    Pass ?permanent=true to permanently remove.
     """
     file_service = FileService(db)
     
-    # Get file record, verifying ownership
     file_record = file_service.get_file_by_id(file_id, current_user.id)
     if not file_record:
         raise HTTPException(status_code=404, detail="File not found")
-    
-    # Delete file
-    success, error = await file_service.delete_file(file_record)
-    if not success:
-        raise HTTPException(status_code=500, detail=error)
-    
-    return FileDeleteResponse(
-        success=True,
-        fileId=file_id,
+
+    if permanent:
+        success, error = await file_service.delete_file(file_record)
+        if not success:
+            raise HTTPException(status_code=500, detail=error)
+    else:
+        TrashService(db).trash_file(file_record)
+
+    AuditService(db).log(
+        user_id=current_user.id,
+        action="file_delete" if permanent else "file_trash",
+        resource_type="file",
+        resource_id=file_id,
     )
+    
+    return FileDeleteResponse(success=True, fileId=file_id)
+
+
+@router.post("/{file_id}/restore", response_model=FileListItem)
+async def restore_file(
+    file_id: str,
+    current_user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Restore a file from trash."""
+    from app.models.file import File as FileModel
+    file_record = db.query(FileModel).filter(
+        FileModel.id == file_id,
+        FileModel.user_id == current_user.id,
+        FileModel.deleted_at.isnot(None),
+    ).first()
+    if not file_record:
+        raise HTTPException(status_code=404, detail="Trashed file not found")
+
+    file_record = TrashService(db).restore_file(file_record)
+
+    AuditService(db).log(
+        user_id=current_user.id,
+        action="file_restore",
+        resource_type="file",
+        resource_id=file_id,
+    )
+
+    return FileListItem.from_orm_model(file_record)
+
+
+# ─── Version endpoints ───────────────────────────────────────────────────
+
+@router.get("/{file_id}/versions")
+async def list_versions(
+    file_id: str,
+    current_user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """List all versions of a file."""
+    file_svc = FileService(db)
+    file_record = file_svc.get_file_by_id(file_id, current_user.id)
+    if not file_record:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    ver_svc = VersioningService(db)
+    versions = ver_svc.get_versions(file_record)
+    return {
+        "versions": [
+            {
+                "id": v.id,
+                "versionNumber": v.version_number,
+                "encryptedFileKey": v.encrypted_file_key,
+                "encryptedSize": v.encrypted_size,
+                "createdAt": v.created_at.isoformat(),
+            }
+            for v in versions
+        ],
+        "totalCount": len(versions),
+    }
+
+
+@router.get("/{file_id}/versions/{version_number}/download")
+async def download_version(
+    file_id: str,
+    version_number: int,
+    current_user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Download a specific version of a file."""
+    file_svc = FileService(db)
+    file_record = file_svc.get_file_by_id(file_id, current_user.id)
+    if not file_record:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    ver_svc = VersioningService(db)
+    version = ver_svc.get_version(file_record, version_number)
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+
+    content, error = await ver_svc.read_version_content(version, current_user.id)
+    if error:
+        raise HTTPException(status_code=500, detail=error)
+
+    return StreamingResponse(
+        iter([content]),
+        media_type="application/octet-stream",
+        headers={"Content-Length": str(len(content))},
+    )
+
+
+# ─── Move endpoint ───────────────────────────────────────────────────────
+
+@router.patch("/{file_id}/move")
+async def move_file(
+    file_id: str,
+    folder_id: Optional[str] = Query(None, description="Target folder (null = root)"),
+    current_user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Move a file to a different folder (or to root with folder_id=null)."""
+    file_svc = FileService(db)
+    file_record = file_svc.get_file_by_id(file_id, current_user.id)
+    if not file_record:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    if folder_id:
+        from app.services.folder import FolderService
+        folder = FolderService(db).get_folder(folder_id, current_user.id)
+        if not folder:
+            raise HTTPException(status_code=404, detail="Target folder not found")
+
+    file_record.folder_id = folder_id
+    db.commit()
+    db.refresh(file_record)
+
+    AuditService(db).log(
+        user_id=current_user.id,
+        action="file_move",
+        resource_type="file",
+        resource_id=file_id,
+    )
+
+    return FileListItem.from_orm_model(file_record)

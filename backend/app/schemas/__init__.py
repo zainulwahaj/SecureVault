@@ -8,6 +8,8 @@ from app.schemas.user import (
     ZKLoginVerifyRequest,
     UserResponse,
     SessionResponse,
+    ChangePasswordRequest,
+    UpdateProfileRequest,
 )
 from app.schemas.file import (
     FileUploadMetadata,
@@ -37,6 +39,25 @@ from app.schemas.mfa import (
     MFADisableResponse,
     MFALoginChallengeResponse,
 )
+from app.schemas.folder import (
+    FolderCreateRequest,
+    FolderResponse,
+    FolderListResponse,
+    FolderRenameRequest,
+    FolderMoveRequest,
+)
+from app.schemas.audit import (
+    AuditLogItem,
+    AuditListResponse,
+)
+from app.schemas.link import (
+    CreateLinkRequest,
+    LinkResponse,
+    LinkPublicInfo,
+    VerifyLinkPasswordRequest,
+    VerifyLinkPasswordResponse,
+    LinkListResponse,
+)
 
 __all__ = [
     # Auth schemas
@@ -48,6 +69,7 @@ __all__ = [
     "ZKLoginVerifyRequest",
     "UserResponse",
     "SessionResponse",
+    "UpdateProfileRequest",
     # File schemas
     "FileUploadMetadata",
     "FileUploadResponse",
@@ -73,4 +95,20 @@ __all__ = [
     "MFADisableRequest",
     "MFADisableResponse",
     "MFALoginChallengeResponse",
+    # Folder schemas
+    "FolderCreateRequest",
+    "FolderResponse",
+    "FolderListResponse",
+    "FolderRenameRequest",
+    "FolderMoveRequest",
+    # Audit schemas
+    "AuditLogItem",
+    "AuditListResponse",
+    # Link schemas
+    "CreateLinkRequest",
+    "LinkResponse",
+    "LinkPublicInfo",
+    "VerifyLinkPasswordRequest",
+    "VerifyLinkPasswordResponse",
+    "LinkListResponse",
 ]

@@ -11,7 +11,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
@@ -47,6 +46,7 @@ out/
 .env
 .env.local
 .env.*.local
+.env.production
 
 # Logs
 *.log
@@ -64,6 +64,19 @@ Thumbs.db
 # Testing
 coverage/
 .nyc_output/
+
+# Docker
+docker-compose.override.yml
+
+# Infra (CDK) build output
+infra/cdk.out/
+
+# Uploads (local dev)
+backend/uploads/
+
+# Alembic
+backend/alembic/versions/*.py
+!backend/alembic/versions/.gitkeep
 
 # Misc
 *.pem

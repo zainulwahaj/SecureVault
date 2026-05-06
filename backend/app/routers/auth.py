@@ -19,7 +19,9 @@ from app.schemas import (
     ZKLoginChallengeResponse,
     ZKLoginVerifyRequest,
     UserResponse,
-    SessionResponse
+    SessionResponse,
+    ChangePasswordRequest,
+    UpdateProfileRequest,
 )
 from app.services.auth import AuthService
 from app.services.session import SessionService
@@ -195,6 +197,42 @@ async def logout(
     return {"message": "Logged out successfully"}
 
 
+@router.post("/change-password")
+async def change_password(
+    data: ChangePasswordRequest,
+    current_user = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Change password (zero-knowledge).
+
+    The client proves knowledge of the current password via oldProof,
+    then provides new encrypted blobs derived from the new password.
+    The VaultKey itself doesn't change — only its encryption wrapper does.
+    """
+    import hashlib
+
+    if current_user.login_proof != data.oldProof:
+        raise HTTPException(status_code=403, detail="Current password is incorrect")
+
+    current_user.salt = data.salt
+    current_user.kdf_params = data.kdfParams.model_dump()
+    current_user.encrypted_vault_key = data.encryptedVaultKey.model_dump()
+    current_user.login_proof = data.loginProof
+    current_user.encrypted_private_key = data.encryptedPrivateKey
+    db.commit()
+
+    from app.services.audit import AuditService
+    AuditService(db).log(
+        user_id=current_user.id,
+        action="password_change",
+        resource_type="user",
+        resource_id=current_user.id,
+    )
+
+    return {"success": True, "message": "Password changed successfully"}
+
+
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(
     current_user = Depends(get_current_user)
@@ -204,4 +242,20 @@ async def get_current_user_info(
     
     Used by the frontend to check if a valid session exists.
     """
+    return UserResponse.from_orm_model(current_user)
+
+
+@router.patch("/profile", response_model=UserResponse)
+async def update_profile(
+    data: UpdateProfileRequest,
+    current_user = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Update non-crypto profile fields (display name, avatar)."""
+    if data.displayName is not None:
+        current_user.display_name = data.displayName
+    if data.avatarUrl is not None:
+        current_user.avatar_url = data.avatarUrl
+    db.commit()
+    db.refresh(current_user)
     return UserResponse.from_orm_model(current_user)

@@ -100,6 +100,8 @@ interface AuthContextValue extends AuthState {
    * Cancel MFA verification and logout.
    */
   cancelMfaVerification: () => void;
+
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -388,6 +390,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await api.logout();
   }, [setVaultKey]);
 
+  const refreshUser = useCallback(async () => {
+    const result = await api.getCurrentUser();
+    if (result.success && result.data) {
+      setUser(result.data);
+    }
+  }, []);
+
   // Determine if user needs to unlock (has session but no VaultKey)
   const needsUnlock = !!user && !hasVaultKey && !pendingMfa;
 
@@ -406,6 +415,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     vaultKey: vaultKeyRef.current,
     completeMfaVerification,
     cancelMfaVerification,
+    refreshUser,
   };
 
   return (

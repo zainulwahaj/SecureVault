@@ -1,85 +1,113 @@
 'use client';
 
-import { useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
 import { Logo, LogoLoader } from '@/components/ui/Logo';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
-import { Button } from '@/components/ui/Button';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { Sheet, SheetContent, SheetFooter } from '@/components/ui/sheet';
+import { MenuToggle } from '@/components/ui/menu-toggle';
+import { BentoCard, BentoGrid } from '@/components/ui/bento-grid';
+import { InteractiveHoverButton } from '@/components/ui/interactive-hover-button';
+import { WebGLShader } from '@/components/ui/web-gl-shader';
 import {
-  ShieldCheckIcon,
-  LockClosedIcon,
-  KeyIcon,
-  CloudArrowUpIcon,
-  UserGroupIcon,
-  FingerPrintIcon,
-} from '@heroicons/react/24/outline';
+  ShieldCheck,
+  Lock,
+  KeyRound,
+  CloudUpload,
+  Users,
+  Fingerprint,
+  MoveRight,
+  CheckCircle2,
+} from 'lucide-react';
 
 const features = [
   {
-    icon: LockClosedIcon,
-    title: 'End-to-End Encryption',
+    Icon: Lock,
+    name: 'End-to-End Encryption',
     description: 'Your files are encrypted before leaving your browser using XChaCha20-Poly1305.',
+    href: '/register',
+    cta: 'Learn more',
+    className: 'lg:row-start-1 lg:row-end-4 lg:col-start-2 lg:col-end-3',
+    background: (
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-50" />
+    ),
   },
   {
-    icon: KeyIcon,
-    title: 'Zero-Knowledge Architecture',
+    Icon: KeyRound,
+    name: 'Zero-Knowledge Architecture',
     description: 'We never see your password or encryption keys. Only you can access your data.',
+    href: '/register',
+    cta: 'Learn more',
+    className: 'lg:col-start-1 lg:col-end-2 lg:row-start-1 lg:row-end-3',
+    background: (
+      <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-transparent to-transparent opacity-50" />
+    ),
   },
   {
-    icon: ShieldCheckIcon,
-    title: 'Military-Grade Security',
+    Icon: ShieldCheck,
+    name: 'Military-Grade Security',
     description: 'PBKDF2-SHA256 key derivation with 100,000 iterations protects your master key.',
+    href: '/register',
+    cta: 'Learn more',
+    className: 'lg:col-start-1 lg:col-end-2 lg:row-start-3 lg:row-end-4',
+    background: (
+      <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-transparent to-transparent opacity-50" />
+    ),
   },
   {
-    icon: CloudArrowUpIcon,
-    title: 'Secure File Storage',
+    Icon: CloudUpload,
+    name: 'Secure File Storage',
     description: 'Upload any file type. Each file gets its own unique encryption key.',
+    href: '/register',
+    cta: 'Learn more',
+    className: 'lg:col-start-3 lg:col-end-3 lg:row-start-1 lg:row-end-2',
+    background: (
+      <div className="absolute inset-0 bg-gradient-to-br from-violet-500/10 via-transparent to-transparent opacity-50" />
+    ),
   },
   {
-    icon: UserGroupIcon,
-    title: 'Secure Sharing',
+    Icon: Users,
+    name: 'Secure Sharing',
     description: 'Share files with others using envelope encryption. They decrypt with their key.',
-  },
-  {
-    icon: FingerPrintIcon,
-    title: 'Two-Factor Authentication',
-    description: 'Add an extra layer of security with TOTP-based 2FA. Even the 2FA secret is encrypted.',
+    href: '/register',
+    cta: 'Learn more',
+    className: 'lg:col-start-3 lg:col-end-3 lg:row-start-2 lg:row-end-4',
+    background: (
+      <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 via-transparent to-transparent opacity-50" />
+    ),
   },
 ];
-
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1,
-    },
-  },
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: 0.5,
-    },
-  },
-};
 
 export default function HomePage() {
   const { isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
+  const [titleNumber, setTitleNumber] = useState(0);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const titles = useMemo(
+    () => ['encrypted', 'private', 'protected', 'secure', 'yours'],
+    [],
+  );
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
       router.push('/dashboard');
     }
   }, [isAuthenticated, isLoading, router]);
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (titleNumber === titles.length - 1) {
+        setTitleNumber(0);
+      } else {
+        setTitleNumber(titleNumber + 1);
+      }
+    }, 2000);
+    return () => clearTimeout(timeoutId);
+  }, [titleNumber, titles]);
 
   if (isLoading) {
     return (
@@ -89,230 +117,229 @@ export default function HomePage() {
     );
   }
 
+  const navLinks = [
+    { label: 'Features', href: '#features' },
+    { label: 'Security', href: '#security' },
+  ];
+
   return (
-    <div className="min-h-screen">
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 px-4 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Logo animated />
-          <div className="flex items-center gap-3">
-            <ThemeToggle />
-            <Link href="/login">
-              <Button variant="ghost" size="sm">
-                Sign In
+    <div className="relative min-h-screen">
+      {/* WebGL Shader Background */}
+      <WebGLShader />
+
+      {/* Content overlay */}
+      <div className="relative z-10">
+        {/* Header */}
+        <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur-lg dark:bg-black/40 dark:border-white/10 supports-[backdrop-filter]:dark:bg-black/30">
+          <nav className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4">
+            <Logo />
+            <div className="hidden items-center gap-2 lg:flex">
+              {navLinks.map((link) => (
+                <a
+                  key={link.label}
+                  className={buttonVariants({ variant: 'ghost', className: 'text-foreground hover:text-foreground dark:text-white/80 dark:hover:text-white dark:hover:bg-white/10' })}
+                  href={link.href}
+                >
+                  {link.label}
+                </a>
+              ))}
+              <ThemeToggle />
+              <Link href="/login">
+                <Button
+                  className="h-9 min-w-[7rem] rounded-full border-0 px-5 py-2 text-sm font-semibold bg-muted text-foreground hover:bg-muted/80 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
+                >
+                  Sign In
+                </Button>
+              </Link>
+              <Link href="/register">
+                <InteractiveHoverButton text="Get Started" className="w-auto min-w-[7rem] px-5 py-2 border-primary bg-primary text-primary-foreground hover:border-primary hover:bg-primary" />
+              </Link>
+            </div>
+            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+              <Button size="icon" variant="outline" className="lg:hidden border-border dark:border-white/20 dark:bg-white/5 dark:text-white dark:hover:bg-white/10">
+                <MenuToggle
+                  strokeWidth={2.5}
+                  open={mobileOpen}
+                  onOpenChange={setMobileOpen}
+                  className="size-5"
+                />
               </Button>
-            </Link>
-            <Link href="/register">
-              <Button size="sm">
-                Get Started
-              </Button>
-            </Link>
+              <SheetContent
+                className="bg-background/95 supports-[backdrop-filter]:bg-background/80 gap-0 backdrop-blur-lg"
+                showCloseButton={false}
+                side="left"
+              >
+                <div className="grid gap-y-2 overflow-y-auto px-4 pt-12 pb-5">
+                  {navLinks.map((link) => (
+                    <a
+                      key={link.label}
+                      className={buttonVariants({
+                        variant: 'ghost',
+                        className: 'justify-start',
+                      })}
+                      href={link.href}
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      {link.label}
+                    </a>
+                  ))}
+                </div>
+                <SheetFooter>
+                  <Link href="/login" onClick={() => setMobileOpen(false)}>
+                    <Button variant="secondary" className="w-full rounded-full">Sign In</Button>
+                  </Link>
+                  <Link href="/register" onClick={() => setMobileOpen(false)}>
+                    <InteractiveHoverButton text="Get Started" className="w-full min-w-0 rounded-lg border-primary bg-primary text-primary-foreground" />
+                  </Link>
+                </SheetFooter>
+              </SheetContent>
+            </Sheet>
+          </nav>
+        </header>
+
+        {/* Hero Section */}
+        <section className="relative flex min-h-[calc(100vh-3.5rem)] items-center justify-center px-4">
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/70 via-background/20 to-transparent dark:from-transparent dark:via-transparent" />
+          <div className="container relative z-10 mx-auto">
+            <div className="flex gap-8 py-20 lg:py-40 items-center justify-center flex-col">
+              <div>
+                <Button variant="secondary" size="sm" className="gap-4 border border-border bg-muted/50 text-foreground hover:bg-muted dark:bg-white/10 dark:text-white/90 dark:border-white/20 dark:hover:bg-white/20 backdrop-blur-sm">
+                  <ShieldCheck className="size-4" />
+                  Zero-Knowledge Encryption
+                  <MoveRight className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="flex gap-4 flex-col">
+                <h1 className="text-5xl md:text-7xl max-w-2xl tracking-tighter text-center font-regular">
+                  <span className="text-foreground dark:text-white">Your files, always</span>
+                  <span className="relative flex w-full justify-center overflow-hidden text-center md:pb-4 md:pt-1">
+                    &nbsp;
+                    {titles.map((title, index) => (
+                      <motion.span
+                        key={index}
+                        className="absolute font-semibold bg-gradient-to-r from-foreground to-foreground/60 dark:from-white dark:to-white/60 bg-clip-text text-transparent"
+                        initial={{ opacity: 0, y: '-100' }}
+                        transition={{ type: 'spring', stiffness: 50 }}
+                        animate={
+                          titleNumber === index
+                            ? {
+                                y: 0,
+                                opacity: 1,
+                              }
+                            : {
+                                y: titleNumber > index ? -150 : 150,
+                                opacity: 0,
+                              }
+                        }
+                      >
+                        {title}
+                      </motion.span>
+                    ))}
+                  </span>
+                </h1>
+
+                <p className="text-lg md:text-xl leading-relaxed tracking-tight text-muted-foreground max-w-2xl text-center dark:text-white/60">
+                  A secure file vault where all encryption happens in your browser.
+                  We can&apos;t read your files. We can&apos;t reset your password.
+                  That&apos;s the point.
+                </p>
+              </div>
+              <div className="flex flex-row gap-3">
+                <Link href="/login">
+                  <Button
+                    className="h-11 min-w-[9rem] rounded-full border-0 px-8 py-2.5 text-base font-semibold bg-muted text-foreground hover:bg-muted/80 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
+                  >
+                    Sign In
+                  </Button>
+                </Link>
+                <Link href="/register">
+                  <InteractiveHoverButton text="Get Started" className="w-auto min-w-[9rem] px-8 py-2.5 text-base border-primary bg-primary text-primary-foreground" />
+                </Link>
+              </div>
+
+              {/* Trust badges */}
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground dark:text-white/50">
+                {['Open Source', 'Client-Side Only', 'No Tracking'].map((label) => (
+                  <div key={label} className="flex items-center gap-2">
+                    <CheckCircle2 className="size-4 text-green-600 dark:text-green-400" />
+                    {label}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
-      </nav>
+        </section>
 
-      {/* Hero Section */}
-      <section className="relative pt-32 pb-20 px-4 overflow-hidden">
-        {/* Background gradient */}
-        <div className="absolute inset-0 bg-gradient-to-br from-primary-50 via-white to-accent-50 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800" />
-        
-        {/* Animated background shapes */}
-        <div className="absolute inset-0 overflow-hidden">
-          <motion.div
-            className="absolute -top-40 -right-40 w-80 h-80 rounded-full bg-primary-200/30 dark:bg-primary-900/20 blur-3xl"
-            animate={{
-              scale: [1, 1.2, 1],
-              opacity: [0.3, 0.5, 0.3],
-            }}
-            transition={{
-              duration: 8,
-              repeat: Infinity,
-              ease: 'easeInOut',
-            }}
-          />
-          <motion.div
-            className="absolute -bottom-40 -left-40 w-80 h-80 rounded-full bg-accent-200/30 dark:bg-accent-900/20 blur-3xl"
-            animate={{
-              scale: [1.2, 1, 1.2],
-              opacity: [0.5, 0.3, 0.5],
-            }}
-            transition={{
-              duration: 8,
-              repeat: Infinity,
-              ease: 'easeInOut',
-            }}
-          />
-        </div>
+        {/* Features Bento Grid Section */}
+        <section id="features" className="py-20 px-4 bg-background">
+          <div className="max-w-6xl mx-auto">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+              className="text-center mb-16"
+            >
+              <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
+                Security Without Compromise
+              </h2>
+              <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+                Every feature is designed with your privacy in mind. No backdoors, no exceptions.
+              </p>
+            </motion.div>
 
-        <div className="relative max-w-4xl mx-auto text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 text-sm font-medium mb-6">
-              <ShieldCheckIcon className="w-4 h-4" />
-              Zero-Knowledge Encryption
-            </span>
-          </motion.div>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+            >
+              <BentoGrid className="lg:grid-rows-3">
+                {features.map((feature) => (
+                  <BentoCard key={feature.name} {...feature} />
+                ))}
+              </BentoGrid>
+            </motion.div>
+          </div>
+        </section>
 
-          <motion.h1
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.1 }}
-            className="text-4xl sm:text-5xl md:text-6xl font-bold text-slate-900 dark:text-white mb-6 leading-tight"
-          >
-            Your Files.{' '}
-            <span className="text-gradient">Your Keys.</span>
-            <br />
-            Your Privacy.
-          </motion.h1>
-
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            className="text-lg sm:text-xl text-slate-600 dark:text-slate-300 mb-10 max-w-2xl mx-auto"
-          >
-            A secure file vault where all encryption happens in your browser.
-            We can&apos;t read your files. We can&apos;t reset your password.
-            That&apos;s the point.
-          </motion.p>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.3 }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-4"
-          >
-            <Link href="/register">
-              <Button size="lg" className="w-full sm:w-auto">
-                Create Your Vault
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                </svg>
-              </Button>
-            </Link>
-            <Link href="/login">
-              <Button variant="secondary" size="lg" className="w-full sm:w-auto">
-                Sign In
-              </Button>
-            </Link>
-          </motion.div>
-
-          {/* Trust badges */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.5 }}
-            className="mt-12 flex flex-wrap items-center justify-center gap-6 text-sm text-slate-500 dark:text-slate-400"
-          >
-            <div className="flex items-center gap-2">
-              <svg className="w-5 h-5 text-success-500" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              Open Source
-            </div>
-            <div className="flex items-center gap-2">
-              <svg className="w-5 h-5 text-success-500" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              Client-Side Only
-            </div>
-            <div className="flex items-center gap-2">
-              <svg className="w-5 h-5 text-success-500" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              No Tracking
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Features Section */}
-      <section className="py-20 px-4 bg-white dark:bg-slate-800/50">
-        <div className="max-w-6xl mx-auto">
+        {/* CTA Section */}
+        <section id="security" className="py-20 px-4 bg-background">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
-            className="text-center mb-16"
+            className="max-w-3xl mx-auto text-center"
           >
-            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4">
-              Security Without Compromise
-            </h2>
-            <p className="text-lg text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
-              Every feature is designed with your privacy in mind. No backdoors, no exceptions.
-            </p>
-          </motion.div>
-
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-          >
-            {features.map((feature, index) => (
-              <motion.div
-                key={feature.title}
-                variants={itemVariants}
-                className="group p-6 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-all duration-300 hover:shadow-soft"
-              >
-                <div className="w-12 h-12 rounded-xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
-                  <feature.icon className="w-6 h-6 text-primary-600 dark:text-primary-400" />
-                </div>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
-                  {feature.title}
-                </h3>
-                <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">
-                  {feature.description}
+            <div className="relative rounded-2xl border border-border bg-card p-8 sm:p-12 shadow-xl overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/5" />
+              <div className="relative">
+                <Fingerprint className="size-12 text-primary mx-auto mb-6" />
+                <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-4">
+                  Ready to secure your files?
+                </h2>
+                <p className="text-muted-foreground mb-8 max-w-lg mx-auto">
+                  Create your vault in seconds. No credit card required. Your first step towards true privacy.
                 </p>
-              </motion.div>
-            ))}
+                <Link href="/register">
+                  <InteractiveHoverButton text="Get Started Free" className="w-auto min-w-[10rem] px-6 py-3 text-base border-primary bg-primary text-primary-foreground" />
+                </Link>
+              </div>
+            </div>
           </motion.div>
-        </div>
-      </section>
+        </section>
 
-      {/* CTA Section */}
-      <section className="py-20 px-4">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="max-w-3xl mx-auto text-center"
-        >
-          <div className="p-8 sm:p-12 rounded-3xl bg-gradient-to-br from-primary-600 to-primary-700 dark:from-primary-700 dark:to-primary-800 shadow-glow-lg">
-            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-4">
-              Ready to secure your files?
-            </h2>
-            <p className="text-primary-100 mb-8 max-w-lg mx-auto">
-              Create your vault in seconds. No credit card required. Your first step towards true privacy.
+        {/* Footer */}
+        <footer className="py-8 px-4 border-t border-border bg-background">
+          <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <Logo size="sm" />
+            <p className="text-sm text-muted-foreground">
+              Your data stays yours. Always encrypted. Always private.
             </p>
-            <Link href="/register">
-              <Button
-                variant="secondary"
-                size="lg"
-                className="bg-white hover:bg-slate-50 text-primary-700"
-              >
-                Get Started Free
-              </Button>
-            </Link>
           </div>
-        </motion.div>
-      </section>
-
-      {/* Footer */}
-      <footer className="py-8 px-4 border-t border-slate-200 dark:border-slate-800">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <Logo size="sm" />
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Your data stays yours. Always encrypted. Always private.
-          </p>
-        </div>
-      </footer>
+        </footer>
+      </div>
     </div>
   );
 }
