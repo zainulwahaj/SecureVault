@@ -102,7 +102,7 @@ export default function MFASetup({ onClose }: MFASetupProps) {
         return;
       }
 
-      const result = await setupMFAApi(encryptedSecret, recoveryCodesHash, code);
+      const result = await setupMFAApi(encryptedSecret, mfaSecret, recoveryCodesHash, code);
       if (result.success) {
         setStep('recovery');
       } else {

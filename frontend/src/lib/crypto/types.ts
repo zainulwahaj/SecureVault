@@ -118,6 +118,10 @@ export interface ZKRegistrationData {
   publicKey: string;
   /** X25519 private key encrypted with VaultKey (base64) */
   encryptedPrivateKey: string;
+  /** Ed25519 public key for challenge-bound login (base64) */
+  authPublicKey: string;
+  /** Ed25519 private key encrypted with VaultKey */
+  encryptedAuthPrivateKey: EncryptedBlob;
 }
 
 /**
@@ -133,6 +137,16 @@ export interface ZKLoginChallenge {
   kdfParams: KdfParams;
   /** Encrypted VaultKey to decrypt */
   encryptedVaultKey: EncryptedBlob;
+  /** Encrypted Ed25519 auth private key to sign challenge after unlock */
+  encryptedAuthPrivateKey: EncryptedBlob | null;
+  /** One-time challenge ID */
+  authChallengeId: string;
+  /** Base64-encoded one-time challenge */
+  authChallenge: string;
+  /** True when backend will create a pending MFA session after signature verify */
+  mfaRequired: boolean;
+  /** False only for legacy accounts that need auth-key upgrade */
+  authKeyRequired: boolean;
 }
 
 /**

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
 import * as api from '@/lib/api';
-import { generateLoginProof, bytesToBase64, clearSensitiveData } from '@/lib/crypto';
+import { generateLoginProof, attemptLogin, bytesToBase64, clearSensitiveData } from '@/lib/crypto';
 import { deriveKEK, generateSalt } from '@/lib/crypto/kdf';
 import { encryptVaultKey } from '@/lib/crypto/encryption';
 import { DEFAULT_KDF_PARAMS } from '@/lib/crypto/types';
@@ -44,6 +44,29 @@ export default function ChangePassword() {
     setIsLoading(true);
 
     try {
+      if (!user?.email) {
+        toast.error('No active user');
+        return;
+      }
+
+      const challenge = await api.getLoginChallenge(user.email);
+      if (!challenge.success || !challenge.data) {
+        toast.error('Failed to verify current password');
+        return;
+      }
+
+      const currentLogin = await attemptLogin(
+        currentPassword,
+        challenge.data.salt,
+        challenge.data.kdfParams,
+        challenge.data.encryptedVaultKey,
+      );
+      if (!currentLogin.success || !currentLogin.data) {
+        toast.error('Current password is incorrect');
+        return;
+      }
+      clearSensitiveData(currentLogin.data);
+
       const oldProof = await generateLoginProof(vaultKey);
 
       const newSalt = generateSalt();
@@ -68,6 +91,9 @@ export default function ChangePassword() {
         const rawPrivKey = await decryptPrivateKey(privKeyResponse.data.encryptedPrivateKey, vaultKey);
         newEncryptedPrivateKey = await encryptPrivateKey(rawPrivKey, vaultKey);
         clearSensitiveData(rawPrivKey);
+      } else {
+        toast.error('Failed to re-encrypt sharing key');
+        return;
       }
 
       const result = await api.changePassword({

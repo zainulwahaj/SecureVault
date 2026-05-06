@@ -28,7 +28,8 @@ from app.schemas import (
 )
 from app.schemas.file import EncryptedBlob
 from app.services.mfa import MFAService
-from app.routers.auth import get_current_user
+from app.services.session import SessionService
+from app.routers.auth import get_current_user, get_current_auth_user, get_session_token
 from app.models.user import User
 
 router = APIRouter(prefix="/mfa", tags=["mfa"])
@@ -36,7 +37,7 @@ router = APIRouter(prefix="/mfa", tags=["mfa"])
 
 @router.get("/status", response_model=MFAStatusResponse)
 async def get_mfa_status(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_auth_user),
     db: DBSession = Depends(get_db),
 ):
     """
@@ -86,7 +87,9 @@ async def setup_mfa(
     success, error = mfa_service.setup_mfa(
         user=current_user,
         encrypted_mfa_secret=data.encryptedMfaSecret.model_dump(),
+        server_mfa_secret=data.serverMfaSecret,
         recovery_codes_hash=data.recoveryCodesHash,
+        verification_code=data.verificationCode,
     )
     
     if not success:
@@ -115,10 +118,7 @@ async def disable_mfa(
     """
     mfa_service = MFAService(db)
     
-    # The verification code is validated client-side before this request
-    # We trust that if client sends this request, they successfully verified
-    
-    success, error = mfa_service.disable_mfa(current_user)
+    success, error = mfa_service.disable_mfa(current_user, data.verificationCode)
     
     if not success:
         raise HTTPException(status_code=400, detail=error)
@@ -132,7 +132,8 @@ async def disable_mfa(
 @router.post("/verify", response_model=MFAVerifyResponse)
 async def verify_mfa(
     data: MFAVerifyRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_auth_user),
+    session_token: str = Depends(get_session_token),
     db: DBSession = Depends(get_db),
 ):
     """
@@ -157,16 +158,22 @@ async def verify_mfa(
         
         if not success:
             raise HTTPException(status_code=400, detail=error)
+
+        SessionService(db).promote_session_to_full(session_token)
         
         return MFAVerifyResponse(
+            verified=True,
             success=True,
             message="Recovery code accepted",
             recoveryCodesRemaining=remaining,
         )
     else:
-        # TOTP code - client already verified, we just confirm MFA was checked
-        # In a stricter implementation, we could require a proof/signature
+        if not mfa_service.verify_totp_for_user(current_user, data.code):
+            raise HTTPException(status_code=400, detail="Invalid verification code")
+
+        SessionService(db).promote_session_to_full(session_token)
         return MFAVerifyResponse(
+            verified=True,
             success=True,
             message="MFA verified",
         )
@@ -174,7 +181,7 @@ async def verify_mfa(
 
 @router.get("/secret")
 async def get_encrypted_secret(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_auth_user),
     db: DBSession = Depends(get_db),
 ):
     """

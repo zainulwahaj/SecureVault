@@ -50,7 +50,16 @@ class User(Base):
     encrypted_vault_key = Column(JSON, nullable=False)
     
     # SHA-256 hash of VaultKey - proves decryption succeeded without revealing key
+    # LEGACY: kept only for old accounts that have not upgraded to auth signing keys.
+    # New logins must use challenge-bound signatures, not this reusable proof.
     login_proof = Column(String(64), nullable=False)
+
+    # Challenge-bound authentication signing key.
+    # The backend stores only the public key and verifies signatures over
+    # one-time challenges. The private key is encrypted client-side with VaultKey.
+    auth_public_key = Column(Text, nullable=True)
+    encrypted_auth_private_key = Column(JSON, nullable=True)
+    auth_key_version = Column(String(20), default="ed25519-v1", nullable=False)
     
     # Envelope Encryption Fields (for file sharing)
     # X25519 public key (base64 encoded) - anyone can encrypt for this user
@@ -68,6 +77,11 @@ class User(Base):
     # Client generates TOTP codes using decrypted secret
     # Backend NEVER sees the plaintext secret
     encrypted_mfa_secret = Column(JSON, nullable=True)
+
+    # Server-verifiable TOTP secret.
+    # This is a deliberate tradeoff: file/vault data remains zero-knowledge,
+    # but TOTP itself must be server-verifiable to be an enforceable MFA factor.
+    server_mfa_secret = Column(Text, nullable=True)
     
     # Recovery codes (hashed) - for account recovery if TOTP device lost
     # Stored as JSON array of hashed codes

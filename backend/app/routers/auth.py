@@ -19,9 +19,11 @@ from app.schemas import (
     ZKLoginChallengeResponse,
     ZKLoginVerifyRequest,
     UserResponse,
+    CurrentUserResponse,
     SessionResponse,
     ChangePasswordRequest,
     UpdateProfileRequest,
+    UpdateAuthKeyRequest,
 )
 from app.services.auth import AuthService
 from app.services.session import SessionService
@@ -42,20 +44,52 @@ def get_current_user(
     db: DBSession = Depends(get_db)
 ):
     """
-    Dependency to get the current authenticated user.
+    Dependency to get the current fully authenticated user.
     
-    Raises 401 if not authenticated.
+    Raises 401 if not authenticated and 403 if MFA is still pending.
     """
     if not session_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     
     session_service = SessionService(db)
-    user = session_service.get_user_from_token(session_token)
+    user, session = session_service.get_user_and_session_from_token(session_token)
     
-    if not user:
+    if not user or not session:
         raise HTTPException(status_code=401, detail="Invalid or expired session")
+    if session.auth_level != "full":
+        raise HTTPException(status_code=403, detail="MFA verification required")
     
     return user
+
+
+def get_current_auth_user(
+    session_token: Optional[str] = Depends(get_session_token),
+    db: DBSession = Depends(get_db)
+):
+    """Get the current user for pending/full auth endpoints such as MFA."""
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    session_service = SessionService(db)
+    user, session = session_service.get_user_and_session_from_token(session_token)
+    if not user or not session:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    return user
+
+
+def get_current_session(
+    session_token: Optional[str] = Depends(get_session_token),
+    db: DBSession = Depends(get_db),
+):
+    """Return the current Redis session object."""
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    session_service = SessionService(db)
+    session = session_service.get_session_from_token(session_token)
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+    return session
 
 
 def set_session_cookie(response: Response, session_token: str) -> None:
@@ -105,7 +139,9 @@ async def register(
         encrypted_vault_key=data.encryptedVaultKey.model_dump(),
         login_proof=data.loginProof,
         public_key=data.publicKey,
-        encrypted_private_key=data.encryptedPrivateKey
+        encrypted_private_key=data.encryptedPrivateKey,
+        auth_public_key=data.authPublicKey,
+        encrypted_auth_private_key=data.encryptedAuthPrivateKey.model_dump(),
     )
     
     if error:
@@ -116,7 +152,9 @@ async def register(
     
     return SessionResponse(
         user=UserResponse.from_orm_model(user),
-        sessionId=session.id
+        sessionId=session.id,
+        authLevel=session.auth_level,
+        mfaRequired=False,
     )
 
 
@@ -163,7 +201,12 @@ async def login_verify(
     """
     auth_service = AuthService(db)
     
-    user, session, error = auth_service.verify_login(data.email, data.proof)
+    user, session, error = auth_service.verify_login(
+        email=data.email,
+        challenge_id=data.challengeId,
+        signature=data.signature,
+        proof=data.proof,
+    )
     
     if error:
         raise HTTPException(status_code=401, detail=error)
@@ -173,7 +216,9 @@ async def login_verify(
     
     return SessionResponse(
         user=UserResponse.from_orm_model(user),
-        sessionId=session.id
+        sessionId=session.id,
+        authLevel=session.auth_level,
+        mfaRequired=session.auth_level == "pending_mfa",
     )
 
 
@@ -210,9 +255,9 @@ async def change_password(
     then provides new encrypted blobs derived from the new password.
     The VaultKey itself doesn't change — only its encryption wrapper does.
     """
-    import hashlib
+    import secrets
 
-    if current_user.login_proof != data.oldProof:
+    if not secrets.compare_digest(current_user.login_proof, data.oldProof):
         raise HTTPException(status_code=403, detail="Current password is incorrect")
 
     current_user.salt = data.salt
@@ -233,16 +278,36 @@ async def change_password(
     return {"success": True, "message": "Password changed successfully"}
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me", response_model=CurrentUserResponse)
 async def get_current_user_info(
-    current_user = Depends(get_current_user)
+    current_user = Depends(get_current_auth_user),
+    current_session = Depends(get_current_session),
 ):
     """
     Get the currently authenticated user's information.
     
     Used by the frontend to check if a valid session exists.
     """
-    return UserResponse.from_orm_model(current_user)
+    user = UserResponse.from_orm_model(current_user)
+    return CurrentUserResponse(
+        **user.model_dump(),
+        authLevel=current_session.auth_level,
+        mfaRequired=current_session.auth_level == "pending_mfa",
+    )
+
+
+@router.post("/upgrade-auth-key")
+async def upgrade_auth_key(
+    data: UpdateAuthKeyRequest,
+    current_user = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Install challenge-signing auth key material after a legacy login."""
+    current_user.auth_public_key = data.authPublicKey
+    current_user.encrypted_auth_private_key = data.encryptedAuthPrivateKey.model_dump()
+    current_user.auth_key_version = "ed25519-v1"
+    db.commit()
+    return {"success": True}
 
 
 @router.patch("/profile", response_model=UserResponse)

@@ -26,8 +26,9 @@ export default function MFAVerification({ vaultKey, onSuccess, onCancel }: MFAVe
   async function handleVerify(submittedCode?: string) {
     const codeToUse = submittedCode ?? code;
     if (useRecoveryCode) {
-      if (codeToUse.length !== 8) {
-        setError('Recovery code must be 8 characters');
+      const normalized = codeToUse.replace(/-/g, '');
+      if (normalized.length !== 16) {
+        setError('Recovery code must be 16 characters');
         return;
       }
     } else {
@@ -76,7 +77,7 @@ export default function MFAVerification({ vaultKey, onSuccess, onCancel }: MFAVe
         if (result.success && result.data?.verified) {
           onSuccess();
         } else {
-          onSuccess();
+          setError(result.error || 'MFA verification failed');
         }
       }
     } catch (err) {
@@ -115,12 +116,12 @@ export default function MFAVerification({ vaultKey, onSuccess, onCancel }: MFAVe
               type="text"
               value={code}
               onChange={(e) => {
-                const value = e.target.value.toUpperCase().slice(0, 8);
+                const value = e.target.value.toUpperCase().slice(0, 19);
                 setCode(value);
               }}
-              placeholder="XXXXXXXX"
+              placeholder="XXXX-XXXX-XXXX-XXXX"
               className="text-center text-2xl tracking-widest font-mono py-3"
-              maxLength={8}
+              maxLength={19}
               autoFocus
             />
           ) : (
@@ -136,7 +137,7 @@ export default function MFAVerification({ vaultKey, onSuccess, onCancel }: MFAVe
 
           <Button
             onClick={() => handleVerify()}
-            disabled={loading || (useRecoveryCode ? code.length !== 8 : code.length !== 6)}
+            disabled={loading || (useRecoveryCode ? code.replace(/-/g, '').length !== 16 : code.length !== 6)}
             className="w-full"
           >
             {loading ? <><Spinner className="size-4 mr-2" /> Verifying…</> : 'Verify'}

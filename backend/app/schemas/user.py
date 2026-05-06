@@ -53,6 +53,10 @@ class ZKRegisterRequest(BaseModel):
     loginProof: str = Field(..., min_length=32, description="SHA-256 hash of VaultKey")
     publicKey: str = Field(..., min_length=32, description="X25519 public key (base64)")
     encryptedPrivateKey: str = Field(..., min_length=32, description="X25519 private key encrypted with VaultKey")
+    authPublicKey: str = Field(..., min_length=32, description="Ed25519 auth public key (base64)")
+    encryptedAuthPrivateKey: EncryptedBlob = Field(
+        ..., description="Ed25519 auth private key encrypted with VaultKey"
+    )
     
     @field_validator('email')
     @classmethod
@@ -94,6 +98,11 @@ class ZKLoginChallengeResponse(BaseModel):
     salt: str
     kdfParams: KdfParams
     encryptedVaultKey: EncryptedBlob
+    encryptedAuthPrivateKey: EncryptedBlob | None = None
+    authChallengeId: str
+    authChallenge: str = Field(..., description="Base64-encoded one-time login challenge")
+    mfaRequired: bool = False
+    authKeyRequired: bool = True
 
 
 class ZKLoginVerifyRequest(BaseModel):
@@ -104,7 +113,9 @@ class ZKLoginVerifyRequest(BaseModel):
     without revealing the actual key to the backend.
     """
     email: str = Field(..., min_length=3, max_length=255)
-    proof: str = Field(..., min_length=32, description="SHA-256 hash of decrypted VaultKey")
+    challengeId: str | None = Field(None, description="One-time challenge ID from login challenge")
+    signature: str | None = Field(None, description="Base64 Ed25519 signature over the challenge")
+    proof: str | None = Field(None, min_length=32, description="Legacy SHA-256 hash of decrypted VaultKey")
     
     @field_validator('email')
     @classmethod
@@ -142,16 +153,32 @@ class UserResponse(BaseModel):
         )
 
 
+class CurrentUserResponse(UserResponse):
+    """Current user plus server session assurance level."""
+    authLevel: str = "full"
+    mfaRequired: bool = False
+
+
 class UpdateProfileRequest(BaseModel):
     """Update user profile (non-crypto fields)"""
     displayName: str | None = Field(None, max_length=100)
     avatarUrl: str | None = Field(None, max_length=500_000)
 
 
+class UpdateAuthKeyRequest(BaseModel):
+    """Install or rotate challenge-signing auth key material."""
+    authPublicKey: str = Field(..., min_length=32, description="Ed25519 auth public key (base64)")
+    encryptedAuthPrivateKey: EncryptedBlob = Field(
+        ..., description="Ed25519 auth private key encrypted with VaultKey"
+    )
+
+
 class SessionResponse(BaseModel):
     """Response after successful login/registration"""
     user: UserResponse
     sessionId: str
+    authLevel: str = "full"
+    mfaRequired: bool = False
 
 
 class ChangePasswordRequest(BaseModel):

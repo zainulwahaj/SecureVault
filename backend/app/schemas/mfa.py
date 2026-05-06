@@ -34,6 +34,7 @@ class MFASetupRequest(BaseModel):
     - verificationCode: Current TOTP code to prove setup worked
     """
     encryptedMfaSecret: EncryptedBlob
+    serverMfaSecret: str = Field(..., min_length=16, max_length=128)
     recoveryCodesHash: List[str] = Field(..., min_length=8, max_length=12)
     verificationCode: str = Field(..., min_length=6, max_length=6)
 
@@ -67,6 +68,7 @@ class MFAVerifyRequest(BaseModel):
 
 class MFAVerifyResponse(BaseModel):
     """Response after MFA verification"""
+    verified: bool = True
     success: bool
     message: str
     recoveryCodesRemaining: Optional[int] = None

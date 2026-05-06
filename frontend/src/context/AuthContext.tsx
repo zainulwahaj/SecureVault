@@ -32,14 +32,16 @@ import React, {
   type ReactNode 
 } from 'react';
 import type { User, AuthState } from '@/types';
-import type { VaultKey } from '@/lib/crypto/types';
+import type { EncryptedBlob, VaultKey } from '@/lib/crypto/types';
 import * as api from '@/lib/api';
 import { 
   prepareRegistration, 
   attemptLogin, 
   generateLoginProof,
   clearSensitiveData,
-  initCrypto
+  initCrypto,
+  signLoginChallenge,
+  generateEncryptedAuthSigningKeyPair,
 } from '@/lib/crypto';
 
 interface AuthContextValue extends AuthState {
@@ -59,7 +61,7 @@ interface AuthContextValue extends AuthState {
    * Unlock vault when session exists but VaultKey is lost (page refresh).
    * Only requires password since user is already known.
    */
-  unlock: (password: string) => Promise<{ success: boolean; error?: string }>;
+  unlock: (password: string) => Promise<{ success: boolean; error?: string; requiresMfa?: boolean }>;
   
   /** 
    * Logout and clear VaultKey from memory.
@@ -115,6 +117,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [pendingMfa, setPendingMfa] = useState(false);
   const lastActivityRef = useRef<number>(Date.now());
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingAuthKeyUpgradeRef = useRef<{
+    authPublicKey: string;
+    encryptedAuthPrivateKey: EncryptedBlob;
+  } | null>(null);
   
   /**
    * SECURITY CRITICAL: VaultKey storage
@@ -137,6 +143,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const response = await api.getCurrentUser();
         if (response.success && response.data) {
+          if (response.data.mfaRequired || response.data.authLevel === 'pending_mfa') {
+            await api.logout();
+            return;
+          }
           setUser(response.data);
           // User has session but no VaultKey until they login again
           // This is by design - page refresh requires re-authentication
@@ -250,7 +260,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (response.success && response.data) {
         // Step 5: Store user and VaultKey in memory
-        setUser(response.data.user);
+        setUser({
+          ...response.data.user,
+          authLevel: response.data.authLevel,
+          mfaRequired: response.data.mfaRequired,
+        });
         setVaultKey(vaultKey);
         return { success: true };
       }
@@ -305,19 +319,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       const vaultKey = loginResult.data;
       
-      // Step 4: Generate proof and verify with backend
-      const proof = await generateLoginProof(vaultKey);
-      const verifyResponse = await api.verifyLogin(email, proof);
+      let verifyPayload: { challengeId?: string; signature?: string; proof?: string };
+
+      if (challenge.authKeyRequired) {
+        if (!challenge.encryptedAuthPrivateKey) {
+          clearSensitiveData(vaultKey);
+          return { success: false, error: 'Account auth key is missing. Please contact support.' };
+        }
+
+        const signatureResult = await signLoginChallenge(
+          challenge.authChallenge,
+          challenge.encryptedAuthPrivateKey,
+          vaultKey
+        );
+        if (!signatureResult.success || !signatureResult.data) {
+          clearSensitiveData(vaultKey);
+          return { success: false, error: signatureResult.error || 'Login challenge signing failed' };
+        }
+
+        verifyPayload = {
+          challengeId: challenge.authChallengeId,
+          signature: signatureResult.data,
+        };
+      } else {
+        // Legacy fallback for users created before challenge-signing keys.
+        const proof = await generateLoginProof(vaultKey);
+        verifyPayload = { proof };
+      }
+
+      // Step 4: Verify challenge signature with backend
+      const verifyResponse = await api.verifyLogin(email, verifyPayload);
       
       if (verifyResponse.success && verifyResponse.data) {
+        if (!challenge.authKeyRequired) {
+          const authKeyResult = await generateEncryptedAuthSigningKeyPair(vaultKey);
+          if (authKeyResult.success && authKeyResult.data) {
+            if (verifyResponse.data.authLevel === 'full') {
+              await api.upgradeAuthKey(authKeyResult.data);
+            } else {
+              pendingAuthKeyUpgradeRef.current = authKeyResult.data;
+            }
+          }
+        }
+
         // Step 5: Store user and VaultKey
-        setUser(verifyResponse.data.user);
+        setUser({
+          ...verifyResponse.data.user,
+          authLevel: verifyResponse.data.authLevel,
+          mfaRequired: verifyResponse.data.mfaRequired,
+        });
         setVaultKey(vaultKey);
         
-        // Step 6: Check if MFA is required
-        const mfaStatusResponse = await api.getMFAStatus();
-        if (mfaStatusResponse.success && mfaStatusResponse.data?.mfaEnabled) {
-          // MFA is enabled - user needs to verify
+        // Step 6: Server issued a pending-MFA session
+        if (verifyResponse.data.mfaRequired || verifyResponse.data.authLevel === 'pending_mfa') {
           setPendingMfa(true);
           return { success: true, requiresMfa: true };
         }
@@ -378,6 +432,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const completeMfaVerification = useCallback(() => {
     setPendingMfa(false);
+    setUser(prev => prev ? { ...prev, authLevel: 'full', mfaRequired: false } : prev);
+    const pendingUpgrade = pendingAuthKeyUpgradeRef.current;
+    if (pendingUpgrade) {
+      pendingAuthKeyUpgradeRef.current = null;
+      api.upgradeAuthKey(pendingUpgrade).catch(() => {});
+    }
   }, []);
 
   /**
@@ -385,6 +445,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const cancelMfaVerification = useCallback(async () => {
     setPendingMfa(false);
+    pendingAuthKeyUpgradeRef.current = null;
     setUser(null);
     setVaultKey(null);
     await api.logout();

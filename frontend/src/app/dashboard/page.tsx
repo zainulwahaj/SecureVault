@@ -21,7 +21,7 @@ const pageVariants = {
 };
 
 export default function DashboardPage() {
-  const { user, isLoading, hasVaultKey, logout } = useAuth();
+  const { user, isLoading, hasVaultKey, isAuthenticated, pendingMfa, logout } = useAuth();
   const router = useRouter();
   const [activeView, setActiveView] = useState('my-files');
   const [storageUsed, setStorageUsed] = useState(0);
@@ -31,7 +31,10 @@ export default function DashboardPage() {
     if (!isLoading && !user) {
       router.push('/login');
     }
-  }, [user, isLoading, router]);
+    if (!isLoading && pendingMfa) {
+      router.push('/login');
+    }
+  }, [user, isLoading, pendingMfa, router]);
 
   const handleLogout = useCallback(async () => {
     await logout();
@@ -51,7 +54,15 @@ export default function DashboardPage() {
     );
   }
 
-  if (!hasVaultKey) {
+  if (pendingMfa) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <LogoLoader />
+      </div>
+    );
+  }
+
+  if (!hasVaultKey || !isAuthenticated) {
     return <UnlockVault />;
   }
 

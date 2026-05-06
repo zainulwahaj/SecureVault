@@ -46,6 +46,10 @@ export default function UnlockVault({ onUnlocked }: UnlockVaultProps) {
       const result = await unlock(password);
 
       if (result.success) {
+        if (result.requiresMfa) {
+          setStatus('MFA verification required...');
+          return;
+        }
         setStatus('Unlocked!');
         onUnlocked?.();
       } else {

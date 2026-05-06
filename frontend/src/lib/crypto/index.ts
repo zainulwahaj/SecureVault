@@ -32,6 +32,7 @@ import {
   decryptVaultKey 
 } from './encryption';
 import { generateEncryptedKeyPair } from './keypair';
+import { generateEncryptedAuthSigningKeyPair } from './authkey';
 
 // Re-export types and utilities
 export * from './types';
@@ -43,6 +44,7 @@ export * from './file';
 
 // Re-export keypair module
 export * from './keypair';
+export * from './authkey';
 
 // Re-export TOTP module
 export * from './totp';
@@ -100,6 +102,13 @@ export async function prepareRegistration(
     
     // Step 6: Generate X25519 keypair for envelope encryption (file sharing)
     const keypair = await generateEncryptedKeyPair(vaultKey);
+
+    // Step 7: Generate Ed25519 keypair for challenge-bound authentication
+    const authKeyResult = await generateEncryptedAuthSigningKeyPair(vaultKey);
+    if (!authKeyResult.success || !authKeyResult.data) {
+      clearSensitiveData(vaultKey);
+      return { success: false, error: authKeyResult.error || 'Auth key generation failed' };
+    }
     
     // Prepare data for backend (password NOT included)
     const registrationData: ZKRegistrationData = {
@@ -109,6 +118,8 @@ export async function prepareRegistration(
       encryptedVaultKey: encryptResult.data,
       publicKey: keypair.publicKey,
       encryptedPrivateKey: keypair.encryptedPrivateKey,
+      authPublicKey: authKeyResult.data.authPublicKey,
+      encryptedAuthPrivateKey: authKeyResult.data.encryptedAuthPrivateKey,
     };
     
     return {

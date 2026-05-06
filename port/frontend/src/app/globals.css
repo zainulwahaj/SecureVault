@@ -1,0 +1,45 @@
+/* === Cipher Lab additions (merge into your existing globals.css) === */
+
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+:root {
+  --font-sans: 'Geist', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-serif: 'Instrument Serif', 'Times New Roman', serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+@layer utilities {
+  .a-grid {
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 56px 56px;
+    opacity: 0.5;
+  }
+  .a-noise {
+    background-image: radial-gradient(var(--border) 1px, transparent 1px);
+    background-size: 4px 4px;
+    opacity: 0.08;
+  }
+  .a-card { transition: transform .35s cubic-bezier(.2,.8,.2,1), border-color .3s, background .3s; }
+  .a-card:hover { transform: translateY(-3px); background: oklch(from var(--foreground) l c h / 0.05); }
+  .a-cta { display: inline-flex; align-items: center; transition: all .25s; }
+  .a-cta:hover { transform: translateY(-1px); box-shadow: 0 12px 40px oklch(from var(--primary) l c h / 0.45); }
+
+  .a-marquee { animation: a-marquee 28s linear infinite; }
+  .a-pulse { animation: a-pulse 2s ease-in-out infinite; }
+  .a-blink { animation: a-blink 1s steps(1) infinite; }
+  .a-rise { animation: a-rise .25s both; }
+  .a-shimmer-bar { animation: a-shimmer 1.6s linear infinite; }
+  .a-scan-bar {
+    background: linear-gradient(90deg, transparent, var(--primary), transparent);
+    animation: a-scan 8s linear infinite;
+  }
+}
+
+@keyframes a-scan { 0% { transform: translateY(-10%); opacity: 0; } 50% { opacity: .9; } 100% { transform: translateY(110%); opacity: 0; } }
+@keyframes a-blink { 50% { opacity: 0; } }
+@keyframes a-pulse { 0%,100% { opacity: .35; } 50% { opacity: 1; } }
+@keyframes a-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes a-shimmer { 0% { background-position: -300% 0; } 100% { background-position: 300% 0; } }
+@keyframes a-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }

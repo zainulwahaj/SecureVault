@@ -130,11 +130,25 @@ export async function getLoginChallenge(
  */
 export async function verifyLogin(
   email: string,
-  proof: string
+  payload: {
+    challengeId?: string;
+    signature?: string;
+    proof?: string;
+  }
 ): Promise<ApiResponse<SessionInfo>> {
   return fetchApi<SessionInfo>('/auth/login/verify', {
     method: 'POST',
-    body: JSON.stringify({ email, proof }),
+    body: JSON.stringify({ email, ...payload }),
+  });
+}
+
+export async function upgradeAuthKey(payload: {
+  authPublicKey: string;
+  encryptedAuthPrivateKey: EncryptedBlob;
+}): Promise<ApiResponse<{ success: boolean }>> {
+  return fetchApi<{ success: boolean }>('/auth/upgrade-auth-key', {
+    method: 'POST',
+    body: JSON.stringify(payload),
   });
 }
 
@@ -398,6 +412,7 @@ export async function getMFAStatus(): Promise<ApiResponse<MFAStatus>> {
  */
 export async function setupMFA(
   encryptedMfaSecret: EncryptedBlob,
+  serverMfaSecret: string,
   recoveryCodesHash: string[],
   verificationCode: string
 ): Promise<ApiResponse<MFASetupResponse>> {
@@ -405,6 +420,7 @@ export async function setupMFA(
     method: 'POST',
     body: JSON.stringify({
       encryptedMfaSecret,
+      serverMfaSecret,
       recoveryCodesHash,
       verificationCode,
     }),

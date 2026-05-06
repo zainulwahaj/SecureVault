@@ -22,6 +22,8 @@ export interface User {
   displayName?: string | null;
   avatarUrl?: string | null;
   createdAt: string;
+  authLevel?: 'pending_mfa' | 'full';
+  mfaRequired?: boolean;
 }
 
 // Auth state managed by React Context
@@ -46,6 +48,8 @@ export interface ApiResponse<T> {
 export interface SessionInfo {
   user: User;
   sessionId: string;
+  authLevel: 'pending_mfa' | 'full';
+  mfaRequired: boolean;
 }
 
 // ============================================================================
@@ -253,21 +257,21 @@ export interface AuditListResponse {
 // MFA status response
 export interface MFAStatus {
   mfaEnabled: boolean;
-  hasRecoveryCodes: boolean;
+  encryptedMfaSecret?: EncryptedBlobData | null;
+  recoveryCodesRemaining: number;
 }
 
 // MFA setup response
 export interface MFASetupResponse {
   success: boolean;
   message: string;
-  recoveryCodesCount: number;
+  mfaEnabled: boolean;
 }
 
 // MFA verify response
 export interface MFAVerifyResponse {
+  success: boolean;
   verified: boolean;
   message: string;
-  recoveryCodeUsed?: boolean;
-  remainingRecoveryCodes?: number;
+  recoveryCodesRemaining?: number;
 }
-

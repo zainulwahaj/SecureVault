@@ -14,7 +14,12 @@ ZERO-KNOWLEDGE GUARANTEE:
 - Client proves MFA verification without revealing secret
 """
 
+import base64
+import binascii
 import hashlib
+import hmac
+import struct
+import time
 from typing import Dict, Any, Optional, Tuple, List
 from sqlalchemy.orm import Session as DBSession
 from app.models.user import User
@@ -45,8 +50,8 @@ class MFAService:
             recovery_count = len(user.recovery_codes_hash)
         
         return {
-            "mfaEnabled": user.mfa_enabled,
-            "encryptedMfaSecret": user.encrypted_mfa_secret if user.mfa_enabled else None,
+            "mfaEnabled": user.mfa_enabled and user.server_mfa_secret is not None,
+            "encryptedMfaSecret": user.encrypted_mfa_secret if user.mfa_enabled and user.server_mfa_secret else None,
             "recoveryCodesRemaining": recovery_count,
         }
     
@@ -54,7 +59,9 @@ class MFAService:
         self,
         user: User,
         encrypted_mfa_secret: Dict[str, Any],
+        server_mfa_secret: str,
         recovery_codes_hash: List[str],
+        verification_code: str,
     ) -> Tuple[bool, Optional[str]]:
         """
         Set up MFA for a user.
@@ -71,8 +78,11 @@ class MFAService:
         
         Returns: (success, error_message)
         """
-        if user.mfa_enabled:
+        if user.mfa_enabled and user.server_mfa_secret:
             return False, "MFA is already enabled"
+
+        if not self.verify_totp_code(server_mfa_secret, verification_code):
+            return False, "Invalid verification code"
         
         # Validate recovery codes format (should be SHA-256 hashes)
         for code_hash in recovery_codes_hash:
@@ -81,6 +91,7 @@ class MFAService:
         
         # Store encrypted secret and hashed recovery codes
         user.encrypted_mfa_secret = encrypted_mfa_secret
+        user.server_mfa_secret = server_mfa_secret
         user.recovery_codes_hash = recovery_codes_hash
         user.mfa_enabled = True
         
@@ -88,7 +99,7 @@ class MFAService:
         
         return True, None
     
-    def disable_mfa(self, user: User) -> Tuple[bool, Optional[str]]:
+    def disable_mfa(self, user: User, verification_code: str) -> Tuple[bool, Optional[str]]:
         """
         Disable MFA for a user.
         
@@ -101,10 +112,14 @@ class MFAService:
         """
         if not user.mfa_enabled:
             return False, "MFA is not enabled"
+
+        if not user.server_mfa_secret or not self.verify_totp_code(user.server_mfa_secret, verification_code):
+            return False, "Invalid verification code"
         
         # Clear MFA data
         user.mfa_enabled = False
         user.encrypted_mfa_secret = None
+        user.server_mfa_secret = None
         user.recovery_codes_hash = None
         
         self.db.commit()
@@ -134,8 +149,10 @@ class MFAService:
         if not user.recovery_codes_hash:
             return False, "No recovery codes available", 0
         
-        # Hash the provided code
-        code_hash = hashlib.sha256(recovery_code.encode()).hexdigest()
+        # Hash the normalized code. The frontend displays recovery codes as
+        # XXXX-XXXX-XXXX-XXXX and stores hashes without separators.
+        normalized = recovery_code.replace("-", "").lower()
+        code_hash = hashlib.sha256(normalized.encode()).hexdigest()
         
         # Check if hash matches any stored hash
         if code_hash not in user.recovery_codes_hash:
@@ -167,3 +184,45 @@ class MFAService:
             return None
         
         return user.encrypted_mfa_secret
+
+    def verify_totp_for_user(self, user: User, code: str) -> bool:
+        """Verify a TOTP code using the server-held MFA secret."""
+        if not user.mfa_enabled or not user.server_mfa_secret:
+            return False
+        return self.verify_totp_code(user.server_mfa_secret, code)
+
+    @staticmethod
+    def verify_totp_code(secret: str, code: str, window: int = 1) -> bool:
+        """Verify an RFC 6238 TOTP code with a small clock-skew window."""
+        if not code.isdigit() or len(code) != 6:
+            return False
+
+        try:
+            secret_bytes = _base32_decode(secret)
+        except ValueError:
+            return False
+
+        current_counter = int(time.time() // 30)
+        for offset in range(-window, window + 1):
+            expected = _totp(secret_bytes, current_counter + offset)
+            if hmac.compare_digest(expected, code):
+                return True
+        return False
+
+
+def _base32_decode(secret: str) -> bytes:
+    """Decode a base32 TOTP secret, accepting unpadded uppercase/lowercase."""
+    normalized = secret.replace(" ", "").upper()
+    padding = "=" * ((8 - len(normalized) % 8) % 8)
+    try:
+        return base64.b32decode(normalized + padding, casefold=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("Invalid TOTP secret") from exc
+
+
+def _totp(secret: bytes, counter: int) -> str:
+    msg = struct.pack(">Q", counter)
+    digest = hmac.new(secret, msg, hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    code_int = struct.unpack(">I", digest[offset:offset + 4])[0] & 0x7FFFFFFF
+    return f"{code_int % 1_000_000:06d}"
