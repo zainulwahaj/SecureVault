@@ -1,7 +1,7 @@
 """add recovery key + webauthn credentials + account plan
 
 Revision ID: 0006_add_recovery_key
-Revises: 0005_add_chunked_storage_and_share_envelopes
+Revises: 0005_chunked_storage
 Create Date: 2026-05-15
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 revision: str = "0006_add_recovery_key"
-down_revision: Union[str, None] = "0005_add_chunked_storage_and_share_envelopes"
+down_revision: Union[str, None] = "0005_chunked_storage"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

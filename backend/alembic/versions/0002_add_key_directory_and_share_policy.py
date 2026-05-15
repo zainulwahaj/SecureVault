@@ -1,6 +1,6 @@
 """add key directory and share policy fields
 
-Revision ID: 0002_add_key_directory_and_share_policy
+Revision ID: 0002_key_directory
 Revises: 0001_add_auth_signing_keys
 Create Date: 2026-05-06
 """
@@ -15,7 +15,7 @@ from alembic import context, op
 import sqlalchemy as sa
 
 
-revision: str = "0002_add_key_directory_and_share_policy"
+revision: str = "0002_key_directory"
 down_revision: Union[str, None] = "0001_add_auth_signing_keys"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

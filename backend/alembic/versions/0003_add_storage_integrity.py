@@ -1,7 +1,7 @@
 """add storage integrity metadata
 
 Revision ID: 0003_add_storage_integrity
-Revises: 0002_add_key_directory_and_share_policy
+Revises: 0002_key_directory
 Create Date: 2026-05-07
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 revision: str = "0003_add_storage_integrity"
-down_revision: Union[str, None] = "0002_add_key_directory_and_share_policy"
+down_revision: Union[str, None] = "0002_key_directory"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

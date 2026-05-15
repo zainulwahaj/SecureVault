@@ -53,6 +53,15 @@ const CSRF_EXEMPT_ENDPOINTS = new Set([
 
 let cachedCsrfToken: string | null = null;
 
+async function parseResponseBody(response: Response): Promise<any> {
+  const contentType = response.headers.get('Content-Type') || '';
+  if (contentType.includes('application/json')) {
+    return response.json();
+  }
+  const text = await response.text();
+  return text ? { detail: text } : {};
+}
+
 async function getCsrfToken(): Promise<string | null> {
   if (cachedCsrfToken) return cachedCsrfToken;
   try {
@@ -61,7 +70,7 @@ async function getCsrfToken(): Promise<string | null> {
       credentials: 'include',
     });
     if (!response.ok) return null;
-    const data = await response.json();
+    const data = await parseResponseBody(response);
     cachedCsrfToken = typeof data.csrfToken === 'string' ? data.csrfToken : null;
     return cachedCsrfToken;
   } catch {
@@ -104,7 +113,7 @@ async function fetchApi<T>(
       credentials: 'include', // Important for session cookies
     });
 
-    const data = await response.json();
+    const data = await parseResponseBody(response);
 
     if (!response.ok) {
       // Handle different error formats from FastAPI

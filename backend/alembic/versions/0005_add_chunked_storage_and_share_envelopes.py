@@ -1,6 +1,6 @@
 """add chunked storage and share envelopes
 
-Revision ID: 0005_add_chunked_storage_and_share_envelopes
+Revision ID: 0005_chunked_storage
 Revises: 0004_add_audit_observability
 Create Date: 2026-05-15
 """
@@ -11,7 +11,7 @@ from alembic import context, op
 import sqlalchemy as sa
 
 
-revision: str = "0005_add_chunked_storage_and_share_envelopes"
+revision: str = "0005_chunked_storage"
 down_revision: Union[str, None] = "0004_add_audit_observability"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
