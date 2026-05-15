@@ -12,24 +12,47 @@ from app.schemas.user import (
     ChangePasswordRequest,
     UpdateProfileRequest,
     UpdateAuthKeyRequest,
+    CsrfTokenResponse,
+    SessionDeviceItem,
+    SessionListResponse,
+    RevokeSessionsRequest,
+    RevokeSessionsResponse,
 )
 from app.schemas.file import (
     FileUploadMetadata,
     FileUploadResponse,
+    StorageUsageResponse,
     FileListItem,
     FileListResponse,
     FileDeleteResponse,
+    FileUploadSessionCreateRequest,
+    FileUploadSessionResponse,
+    FileUploadPartResponse,
+    FileUploadCompleteRequest,
+    FileUploadAbortResponse,
 )
 from app.schemas.sharing import (
     UserPublicInfo,
     UserSearchResponse,
+    DeviceShareEnvelopeRequest,
     ShareFileRequest,
     ShareFileResponse,
     SharedFileInfo,
     SharedWithMeResponse,
     SharedByMeResponse,
+    FileShareInfo,
+    FileSharesResponse,
     UnshareResponse,
     UpdateKeypairRequest,
+    DeviceKeyInfo,
+    DeviceKeyCreateRequest,
+    DeviceKeyListResponse,
+    DeviceKeyRevokeResponse,
+    ShareEnvelopeInfo,
+    StrongRevokeResponse,
+    RotateRecipientEnvelope,
+    RotateFileContentMetadata,
+    RotateFileContentResponse,
 )
 from app.schemas.mfa import (
     MFASetupRequest,
@@ -51,6 +74,7 @@ from app.schemas.folder import (
 from app.schemas.audit import (
     AuditLogItem,
     AuditListResponse,
+    AuditIntegrityResponse,
 )
 from app.schemas.link import (
     CreateLinkRequest,
@@ -59,6 +83,15 @@ from app.schemas.link import (
     VerifyLinkPasswordRequest,
     VerifyLinkPasswordResponse,
     LinkListResponse,
+)
+from app.schemas.recovery import (
+    RecoverySetupRequest,
+    RecoverySetupResponse,
+    RecoveryStatusResponse,
+    RecoveryChallengeRequest,
+    RecoveryChallengeResponse,
+    RecoveryResetRequest,
+    RecoveryResetResponse,
 )
 
 __all__ = [
@@ -74,22 +107,45 @@ __all__ = [
     "SessionResponse",
     "UpdateProfileRequest",
     "UpdateAuthKeyRequest",
+    "CsrfTokenResponse",
+    "SessionDeviceItem",
+    "SessionListResponse",
+    "RevokeSessionsRequest",
+    "RevokeSessionsResponse",
     # File schemas
     "FileUploadMetadata",
     "FileUploadResponse",
+    "StorageUsageResponse",
     "FileListItem",
     "FileListResponse",
     "FileDeleteResponse",
+    "FileUploadSessionCreateRequest",
+    "FileUploadSessionResponse",
+    "FileUploadPartResponse",
+    "FileUploadCompleteRequest",
+    "FileUploadAbortResponse",
     # Sharing schemas
     "UserPublicInfo",
     "UserSearchResponse",
+    "DeviceShareEnvelopeRequest",
     "ShareFileRequest",
     "ShareFileResponse",
     "SharedFileInfo",
     "SharedWithMeResponse",
     "SharedByMeResponse",
+    "FileShareInfo",
+    "FileSharesResponse",
     "UnshareResponse",
     "UpdateKeypairRequest",
+    "DeviceKeyInfo",
+    "DeviceKeyCreateRequest",
+    "DeviceKeyListResponse",
+    "DeviceKeyRevokeResponse",
+    "ShareEnvelopeInfo",
+    "StrongRevokeResponse",
+    "RotateRecipientEnvelope",
+    "RotateFileContentMetadata",
+    "RotateFileContentResponse",
     # MFA schemas
     "MFASetupRequest",
     "MFASetupResponse",
@@ -108,6 +164,7 @@ __all__ = [
     # Audit schemas
     "AuditLogItem",
     "AuditListResponse",
+    "AuditIntegrityResponse",
     # Link schemas
     "CreateLinkRequest",
     "LinkResponse",
@@ -115,4 +172,12 @@ __all__ = [
     "VerifyLinkPasswordRequest",
     "VerifyLinkPasswordResponse",
     "LinkListResponse",
+    # Recovery schemas
+    "RecoverySetupRequest",
+    "RecoverySetupResponse",
+    "RecoveryStatusResponse",
+    "RecoveryChallengeRequest",
+    "RecoveryChallengeResponse",
+    "RecoveryResetRequest",
+    "RecoveryResetResponse",
 ]

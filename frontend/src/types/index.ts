@@ -44,6 +44,27 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
+
+export interface SessionDevice {
+  sessionIdHash: string;
+  authLevel: 'pending_mfa' | 'full' | string;
+  createdAt: string | null;
+  lastSeenAt: string | null;
+  mfaVerifiedAt: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  current: boolean;
+}
+
+export interface SessionListResponse {
+  sessions: SessionDevice[];
+  totalCount: number;
+}
+
+export interface RevokeSessionsResponse {
+  revokedCount: number;
+}
+
 // Session info returned after login/register
 export interface SessionInfo {
   user: User;
@@ -63,6 +84,25 @@ export interface EncryptedBlobData {
   version: number;
 }
 
+
+export interface ChunkManifestPart {
+  partNumber: number;
+  storagePath?: string;
+  encryptedSize: number;
+  encryptedSha256?: string;
+  plainSize?: number;
+}
+
+export interface ChunkManifest {
+  version?: number;
+  storageMode?: 'chunked' | string;
+  chunkSize?: number;
+  totalParts?: number;
+  encryptedSize?: number;
+  clientManifest?: Record<string, unknown>;
+  parts: ChunkManifestPart[];
+}
+
 // File metadata returned from API (encrypted - client must decrypt)
 export interface EncryptedFileMetadata {
   id: string;
@@ -70,6 +110,9 @@ export interface EncryptedFileMetadata {
   encryptedFilename: EncryptedBlobData;
   encryptedMimeType: EncryptedBlobData | null;
   encryptedSize: number;
+  encryptedSha256?: string | null;
+  storageMode: "single" | "chunked" | string;
+  chunkManifest?: ChunkManifest | null;
   folderId: string | null;
   deletedAt: string | null;
   createdAt: string;
@@ -86,7 +129,35 @@ export interface FileListResponse {
 export interface FileUploadResponse {
   fileId: string;
   encryptedSize: number;
+  encryptedSha256?: string | null;
+  storageMode: "single" | "chunked" | string;
   createdAt: string;
+}
+
+export interface FileUploadSessionResponse {
+  uploadId: string;
+  fileId: string;
+  status: string;
+  receivedParts: number[];
+  totalParts: number;
+  chunkSize: number;
+}
+
+export interface FileUploadPartResponse {
+  uploadId: string;
+  partNumber: number;
+  encryptedSize: number;
+  encryptedSha256: string;
+}
+
+export interface StorageUsage {
+  usedBytes: number;
+  fileBytes: number;
+  versionBytes: number;
+  fileCount: number;
+  maxStorageBytes: number;
+  maxFileSizeBytes: number;
+  maxFileCount: number;
 }
 
 // File delete response
@@ -106,6 +177,8 @@ export interface DecryptedFile {
   createdAt: string;
   // Keep encrypted data for download
   encryptedFileKey: EncryptedBlobData;
+  storageMode?: "single" | "chunked" | string;
+  chunkManifest?: ChunkManifest | null;
 }
 
 // ============================================================================
@@ -141,6 +214,7 @@ export interface FileVersionInfo {
   versionNumber: number;
   encryptedFileKey: EncryptedBlobData;
   encryptedSize: number;
+  encryptedSha256?: string | null;
   createdAt: string;
 }
 
@@ -153,11 +227,24 @@ export interface FileVersionListResponse {
 // Sharing Types - Envelope Encryption
 // ============================================================================
 
+
+export interface DeviceKeyInfo {
+  id: string;
+  deviceLabel?: string | null;
+  encryptionPublicKey: string;
+  signingPublicKey?: string | null;
+  fingerprint: string;
+  createdAt: string;
+}
+
 // User info for sharing (public data only)
 export interface UserPublicInfo {
   id: string;
   email: string;
   publicKey: string;
+  publicKeyId?: string | null;
+  publicKeyFingerprint?: string | null;
+  deviceKeys?: DeviceKeyInfo[];
 }
 
 // Shared file info (from /shared/with-me or /shared/by-me)
@@ -167,11 +254,19 @@ export interface SharedFile {
   encryptedFilename: EncryptedBlobData;
   encryptedMimeType: EncryptedBlobData | null;
   encryptedSize: number;
+  storageMode: "single" | "chunked" | string;
+  chunkManifest?: ChunkManifest | null;
   ownerId: string;
   ownerEmail: string;
   recipientId: string;
   recipientEmail: string;
   encryptedFileKeyForRecipient: EncryptedBlobData;
+  encryptedFileKeyForOwner?: EncryptedBlobData | null;
+  permission: string;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  publicKeyFingerprint?: string | null;
+  envelopeCount?: number;
   sharedAt: string;
 }
 
@@ -187,8 +282,28 @@ export interface DecryptedSharedFile {
   recipientId: string;
   recipientEmail: string;
   sharedAt: string;
+  permission: string;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  publicKeyFingerprint?: string | null;
   // Keep encrypted FileKey for download
   encryptedFileKeyForRecipient: EncryptedBlobData;
+  storageMode: "single" | "chunked" | string;
+  chunkManifest?: ChunkManifest | null;
+}
+
+export interface DecryptedSharedByMe extends SharedFile {
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
+export interface FileShareInfo {
+  recipientId: string;
+  recipientEmail: string;
+  permission: string;
+  publicKeyFingerprint?: string | null;
+  sharedAt: string;
 }
 
 // Share file response
@@ -197,6 +312,8 @@ export interface ShareFileResponse {
   fileId: string;
   recipientId: string;
   recipientEmail: string;
+  permission: string;
+  publicKeyFingerprint?: string | null;
   sharedAt: string;
 }
 
@@ -208,12 +325,24 @@ export interface SharedLinkResponse {
   id: string;
   token: string;
   fileId: string;
+  encryptedFilename?: EncryptedBlobData | null;
+  encryptedMimeType?: EncryptedBlobData | null;
+  encryptedFileKey?: EncryptedBlobData | null;
+  encryptedSize?: number | null;
+  storageMode?: "single" | "chunked" | string;
+  chunkManifest?: ChunkManifest | null;
   passwordProtected: boolean;
   expiresAt: string | null;
   maxDownloads: number | null;
   downloadCount: number;
   isActive: boolean;
   createdAt: string;
+}
+
+export interface DecryptedSharedLink extends SharedLinkResponse {
+  filename: string;
+  mimeType: string;
+  size: number;
 }
 
 export interface SharedLinkListResponse {
@@ -223,8 +352,10 @@ export interface SharedLinkListResponse {
 
 export interface SharedLinkPublicInfo {
   token: string;
-  encryptedFilename: EncryptedBlobData;
-  encryptedFileKey: EncryptedBlobData;
+  encryptedFilename: EncryptedBlobData | null;
+  encryptedFileKey: EncryptedBlobData | null;
+  storageMode?: "single" | "chunked" | string;
+  chunkManifest?: ChunkManifest | null;
   passwordRequired: boolean;
   expiresAt: string | null;
   maxDownloads: number | null;
@@ -238,16 +369,33 @@ export interface SharedLinkPublicInfo {
 export interface AuditLogEntry {
   id: string;
   action: string;
+  category: string;
+  outcome: 'success' | 'failure' | string;
+  severity: 'info' | 'warning' | 'error' | string;
   resourceType: string | null;
   resourceId: string | null;
   details: Record<string, unknown> | null;
+  requestId: string | null;
+  sessionIdHash: string | null;
   ipAddress: string | null;
+  userAgent: string | null;
+  sequenceNumber: number | null;
+  prevHash: string | null;
+  eventHash: string | null;
+  hashVersion: string;
   createdAt: string;
 }
 
 export interface AuditListResponse {
   entries: AuditLogEntry[];
   totalCount: number;
+}
+
+export interface AuditIntegrityResponse {
+  valid: boolean;
+  checkedCount: number;
+  failedEntryId: string | null;
+  reason: string | null;
 }
 
 // ============================================================================

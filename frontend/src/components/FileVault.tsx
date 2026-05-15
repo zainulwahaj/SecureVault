@@ -8,6 +8,8 @@ import type { DecryptedFile, DecryptedFolder, EncryptedBlobData } from '@/types'
 import type { EncryptedBlob } from '@/lib/crypto/types';
 import {
   prepareFileForUpload,
+  prepareChunkedFileForUpload,
+  encryptFileContent,
   decryptFileMetadata,
   decryptDownloadedFile,
   encryptMetadata,
@@ -84,6 +86,7 @@ import {
   FolderInput,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { PageHeader, PageShell, MonoChip } from '@/components/cipher-lab';
 
 type SortField = 'name' | 'date' | 'size';
 type SortDirection = 'asc' | 'desc';
@@ -101,6 +104,10 @@ const containerVariants = {
   },
 };
 
+const CHUNK_UPLOAD_THRESHOLD = 8 * 1024 * 1024;
+const CHUNK_SIZE = 4 * 1024 * 1024;
+const ENCRYPTED_CHUNK_OVERHEAD = 40;
+
 const itemVariants = {
   hidden: { opacity: 0, y: 12 },
   show: { opacity: 1, y: 0 },
@@ -117,6 +124,8 @@ export default function FileVault({ className = '', onStorageUpdate }: FileVault
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+  const [replaceTargetFile, setReplaceTargetFile] = useState<DecryptedFile | null>(null);
   const [shareDialogFile, setShareDialogFile] = useState<DecryptedFile | null>(null);
   const [linkDialogFile, setLinkDialogFile] = useState<DecryptedFile | null>(null);
   const [previewFile, setPreviewFile] = useState<DecryptedFile | null>(null);
@@ -153,9 +162,10 @@ export default function FileVault({ className = '', onStorageUpdate }: FileVault
     setError(null);
 
     try {
-      const [filesResponse, foldersResponse] = await Promise.all([
+      const [filesResponse, foldersResponse, usageResponse] = await Promise.all([
         api.listFiles(currentFolderId),
         api.listFolders(currentFolderId),
+        api.getStorageUsage(),
       ]);
 
       if (filesResponse.success && filesResponse.data) {
@@ -177,6 +187,8 @@ export default function FileVault({ className = '', onStorageUpdate }: FileVault
               deletedAt: file.deletedAt ?? null,
               createdAt: file.createdAt,
               encryptedFileKey: file.encryptedFileKey,
+              storageMode: file.storageMode || 'single',
+              chunkManifest: file.chunkManifest ?? null,
             });
           }
         }
@@ -203,24 +215,21 @@ export default function FileVault({ className = '', onStorageUpdate }: FileVault
         }
         setFolders(decryptedFolders.sort((a, b) => a.name.localeCompare(b.name)));
       }
+
+      if (usageResponse.success && usageResponse.data && onStorageUpdate) {
+        onStorageUpdate(usageResponse.data.usedBytes, usageResponse.data.fileCount);
+      }
     } catch {
       setError('Failed to load files');
       toast.error('Failed to load files', { description: 'An unexpected error occurred' });
     } finally {
       setIsLoading(false);
     }
-  }, [getVaultKey, hasVaultKey, currentFolderId]);
+  }, [getVaultKey, hasVaultKey, currentFolderId, onStorageUpdate]);
 
   useEffect(() => {
     loadFiles();
   }, [loadFiles]);
-
-  useEffect(() => {
-    if (onStorageUpdate) {
-      const totalBytes = files.reduce((acc, file) => acc + file.size, 0);
-      onStorageUpdate(totalBytes, files.length);
-    }
-  }, [files, onStorageUpdate]);
 
   const handleUpload = useCallback(async (selectedFiles: FileList | null) => {
     if (!selectedFiles || selectedFiles.length === 0) return;
@@ -238,6 +247,86 @@ export default function FileVault({ className = '', onStorageUpdate }: FileVault
       for (let i = 0; i < selectedFiles.length; i++) {
         const file = selectedFiles[i];
         setUploadProgress(`Encrypting ${file.name}...`);
+
+        if (file.size >= CHUNK_UPLOAD_THRESHOLD) {
+          const prepResult = await prepareChunkedFileForUpload(file, vaultKey);
+          if (!prepResult.success || !prepResult.data) {
+            toast.error('Encryption failed', { description: `Failed to encrypt ${file.name}` });
+            continue;
+          }
+
+          const totalParts = Math.ceil(file.size / CHUNK_SIZE);
+          const plainPartSizes = Array.from({ length: totalParts }, (_, partNumber) => {
+            const start = partNumber * CHUNK_SIZE;
+            return Math.min(CHUNK_SIZE, file.size - start);
+          });
+          const totalEncryptedSize = plainPartSizes.reduce((sum, size) => sum + size + ENCRYPTED_CHUNK_OVERHEAD, 0);
+          const metadata = {
+            encryptedFileKey: prepResult.data.encryptedFileKey,
+            encryptedFilename: prepResult.data.encryptedFilename,
+            encryptedMimeType: prepResult.data.encryptedMimeType,
+          };
+
+          const sessionResult = await api.createUploadSession({
+            metadata,
+            totalParts,
+            totalSize: totalEncryptedSize,
+            chunkSize: CHUNK_SIZE,
+            folderId: currentFolderId,
+            idempotencyKey: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+          });
+          if (!sessionResult.success || !sessionResult.data) {
+            prepResult.data.fileKey.fill(0);
+            toast.error('Upload failed', { description: sessionResult.error || `Failed to start ${file.name}` });
+            continue;
+          }
+
+          const uploadedParts = [];
+          let uploadFailed = false;
+          for (let partNumber = 0; partNumber < totalParts; partNumber++) {
+            setUploadProgress(`Uploading ${file.name} (${partNumber + 1}/${totalParts})...`);
+            const start = partNumber * CHUNK_SIZE;
+            const plaintext = new Uint8Array(await file.slice(start, start + plainPartSizes[partNumber]).arrayBuffer());
+            const encrypted = await encryptFileContent(plaintext, prepResult.data.fileKey);
+            if (!encrypted.success || !encrypted.data) {
+              uploadFailed = true;
+              toast.error('Encryption failed', { description: `Failed to encrypt chunk ${partNumber + 1}` });
+              break;
+            }
+            const partResult = await api.uploadFilePart(sessionResult.data.uploadId, partNumber, encrypted.data);
+            if (!partResult.success || !partResult.data) {
+              uploadFailed = true;
+              toast.error('Upload failed', { description: partResult.error || `Failed to upload chunk ${partNumber + 1}` });
+              break;
+            }
+            uploadedParts.push({
+              partNumber,
+              encryptedSize: partResult.data.encryptedSize,
+              encryptedSha256: partResult.data.encryptedSha256,
+              plainSize: plainPartSizes[partNumber],
+            });
+          }
+          prepResult.data.fileKey.fill(0);
+
+          if (uploadFailed) {
+            await api.abortUploadSession(sessionResult.data.uploadId);
+            continue;
+          }
+
+          const completeResult = await api.completeUploadSession(sessionResult.data.uploadId, {
+            storageMode: 'chunked',
+            chunkSize: CHUNK_SIZE,
+            totalParts,
+            encryptedSize: totalEncryptedSize,
+            parts: uploadedParts,
+          });
+          if (!completeResult.success) {
+            toast.error('Upload failed', { description: completeResult.error || `Failed to complete ${file.name}` });
+            continue;
+          }
+          successCount++;
+          continue;
+        }
 
         const prepResult = await prepareFileForUpload(file, vaultKey);
         if (!prepResult.success || !prepResult.data) {
@@ -277,6 +366,63 @@ export default function FileVault({ className = '', onStorageUpdate }: FileVault
     }
   }, [getVaultKey, loadFiles, currentFolderId]);
 
+  const startReplace = useCallback((file: DecryptedFile) => {
+    setReplaceTargetFile(file);
+    if (replaceInputRef.current) {
+      replaceInputRef.current.value = '';
+      replaceInputRef.current.click();
+    }
+  }, []);
+
+  const handleReplace = useCallback(async (selectedFiles: FileList | null) => {
+    if (!replaceTargetFile || !selectedFiles || selectedFiles.length === 0) return;
+
+    const vaultKey = getVaultKey();
+    if (!vaultKey) {
+      toast.error('Not authenticated', { description: 'Please unlock your vault first' });
+      return;
+    }
+
+    const replacement = selectedFiles[0];
+    setIsUploading(true);
+    setUploadProgress(`Encrypting ${replacement.name}...`);
+
+    try {
+      const prepResult = await prepareFileForUpload(replacement, vaultKey);
+      if (!prepResult.success || !prepResult.data) {
+        toast.error('Encryption failed', { description: `Failed to encrypt ${replacement.name}` });
+        return;
+      }
+
+      setUploadProgress(`Replacing ${replaceTargetFile.filename}...`);
+      const result = await api.replaceFileContent(
+        replaceTargetFile.id,
+        prepResult.data.encryptedContent,
+        {
+          encryptedFileKey: prepResult.data.encryptedFileKey,
+          encryptedFilename: prepResult.data.encryptedFilename,
+          encryptedMimeType: prepResult.data.encryptedMimeType,
+        },
+      );
+
+      if (!result.success) {
+        toast.error('Replace failed', { description: result.error });
+        return;
+      }
+
+      toast.success('File replaced', {
+        description: `Previous version of "${replaceTargetFile.filename}" was retained.`,
+      });
+      await loadFiles();
+    } catch {
+      toast.error('Replace failed', { description: 'An unexpected error occurred' });
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(null);
+      setReplaceTargetFile(null);
+    }
+  }, [getVaultKey, loadFiles, replaceTargetFile]);
+
   const handleDownload = useCallback(async (file: DecryptedFile) => {
     const vaultKey = getVaultKey();
     if (!vaultKey) {
@@ -298,7 +444,8 @@ export default function FileVault({ className = '', onStorageUpdate }: FileVault
       const decryptResult = await decryptDownloadedFile(
         downloadResult.data,
         toEncryptedBlob(file.encryptedFileKey),
-        vaultKey
+        vaultKey,
+        file.storageMode === 'chunked' ? file.chunkManifest ?? null : null
       );
 
       if (!decryptResult.success || !decryptResult.data) {
@@ -348,11 +495,12 @@ export default function FileVault({ className = '', onStorageUpdate }: FileVault
         next.delete(file.id);
         return next;
       });
+      await loadFiles();
       toast.success('File deleted', { description: `"${file.filename}" has been deleted` });
     } catch {
       toast.error('Delete failed', { description: 'An unexpected error occurred' });
     }
-  }, [confirm]);
+  }, [confirm, loadFiles]);
 
   const handleBulkDelete = useCallback(async () => {
     if (selectedFiles.size === 0) return;
@@ -383,6 +531,7 @@ export default function FileVault({ className = '', onStorageUpdate }: FileVault
 
     setFiles(prev => prev.filter(f => !selectedFiles.has(f.id)));
     setSelectedFiles(new Set());
+    await loadFiles();
 
     if (successCount > 0) {
       toast.success('Files deleted', { description: `${successCount} file${successCount > 1 ? 's' : ''} deleted` });
@@ -390,7 +539,7 @@ export default function FileVault({ className = '', onStorageUpdate }: FileVault
     if (failCount > 0) {
       toast.error('Some deletions failed', { description: `${failCount} file${failCount > 1 ? 's' : ''} could not be deleted` });
     }
-  }, [selectedFiles, confirm]);
+  }, [selectedFiles, confirm, loadFiles]);
 
   const toggleFileSelection = useCallback((fileId: string) => {
     setSelectedFiles(prev => {
@@ -551,8 +700,11 @@ export default function FileVault({ className = '', onStorageUpdate }: FileVault
   };
 
   return (
-    <div
+    <PageShell
       className={`p-4 sm:p-6 lg:p-8 min-w-0 overflow-hidden ${className}`}
+      withBackground
+    >
+    <div
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -563,6 +715,13 @@ export default function FileVault({ className = '', onStorageUpdate }: FileVault
         multiple
         className="hidden"
         onChange={(e) => handleUpload(e.target.files)}
+        disabled={isUploading}
+      />
+      <input
+        ref={replaceInputRef}
+        type="file"
+        className="hidden"
+        onChange={(e) => handleReplace(e.target.files)}
         disabled={isUploading}
       />
 
@@ -618,16 +777,42 @@ export default function FileVault({ className = '', onStorageUpdate }: FileVault
         transition={{ delay: 0.05 }}
         className="mb-6"
       >
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground tracking-tight">
-              Welcome back, <span className="capitalize">{username}</span>
+            <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary mb-3">
+              § VAULT · 02_FILES
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-medium tracking-[-0.03em] leading-[1.05] text-foreground">
+              {folderPath.length > 0 ? (
+                <>
+                  {folderPath[folderPath.length - 1].name}
+                  <span
+                    className="font-normal italic text-primary ml-1"
+                    style={{ fontFamily: 'var(--font-serif)' }}
+                  >
+                    /
+                  </span>
+                </>
+              ) : (
+                <>
+                  Your encrypted{' '}
+                  <span
+                    className="font-normal italic text-primary"
+                    style={{ fontFamily: 'var(--font-serif)' }}
+                  >
+                    vault
+                  </span>
+                  <span className="text-primary">.</span>
+                </>
+              )}
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              {folderPath.length > 0
-                ? `Browsing ${folderPath[folderPath.length - 1].name}`
-                : 'Manage and access your secure file vault.'}
-            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <MonoChip tone="primary">
+                <span className="capitalize">{username}</span>
+              </MonoChip>
+              <MonoChip tone="ok">ENCRYPTED AT REST</MonoChip>
+              <MonoChip>{folderPath.length === 0 ? 'ROOT' : `DEPTH ${folderPath.length}`}</MonoChip>
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -1035,6 +1220,10 @@ export default function FileVault({ className = '', onStorageUpdate }: FileVault
                                   <FolderInput className="size-4 mr-2" />
                                   Move to...
                                 </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => startReplace(file)}>
+                                  <Upload className="size-4 mr-2" />
+                                  Replace...
+                                </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => handleDelete(file)} className="text-destructive focus:text-destructive">
                                   <Trash2 className="size-4 mr-2" />
                                   Delete
@@ -1071,5 +1260,6 @@ export default function FileVault({ className = '', onStorageUpdate }: FileVault
         onMoved={() => { setMoveFiles([]); setSelectedFiles(new Set()); loadFiles(); }}
       />
     </div>
+    </PageShell>
   );
 }

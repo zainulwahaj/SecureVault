@@ -1,7 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { Logo } from '@/components/ui/Logo';
+import { Shield } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
@@ -103,7 +104,21 @@ export function AppNavbar({
     <header className="sticky top-0 z-30 w-full border-b border-border bg-background/80 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-screen-2xl items-center justify-between gap-4 px-4 sm:px-6">
         <div className="flex items-center gap-3 shrink-0">
-          <Logo size="sm" />
+          <Link href="/dashboard" className="flex items-center gap-2.5">
+            <div
+              className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-primary-foreground"
+              style={{ boxShadow: '0 0 20px oklch(from var(--primary) l c h / 0.35)' }}
+            >
+              <Shield size={16} strokeWidth={2.2} />
+            </div>
+            <div className="font-mono text-[14px] font-semibold tracking-[-0.02em] hidden sm:block">
+              secure<span className="text-primary">vault</span>
+            </div>
+          </Link>
+          <div className="hidden lg:flex items-center gap-2 ml-3 pl-3 border-l border-border font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground/80">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 a-pulse" />
+            TLS 1.3
+          </div>
         </div>
 
         <div className="hidden md:flex items-center justify-center flex-1">

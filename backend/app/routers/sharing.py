@@ -16,8 +16,11 @@ Backend is cryptographically blind:
 - Only facilitates encrypted blob exchange
 """
 
+from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+import json
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+from sqlalchemy import or_
 from sqlalchemy.orm import Session as DBSession
 from app.database import get_db
 from app.schemas import (
@@ -28,12 +31,23 @@ from app.schemas import (
     SharedFileInfo,
     SharedWithMeResponse,
     SharedByMeResponse,
+    FileShareInfo,
+    FileSharesResponse,
     UnshareResponse,
     UpdateKeypairRequest,
+    DeviceKeyCreateRequest,
+    DeviceKeyInfo,
+    DeviceKeyListResponse,
+    DeviceKeyRevokeResponse,
+    ShareEnvelopeInfo,
+    StrongRevokeResponse,
+    RotateFileContentMetadata,
+    RotateFileContentResponse,
 )
 from app.schemas.file import EncryptedBlob
 from app.services.sharing import SharingService
 from app.services.file import FileService
+from app.services.audit import AuditService
 from app.routers.auth import get_current_user
 from app.models.user import User
 
@@ -79,6 +93,65 @@ async def get_user_public_key(
     return UserPublicInfo.from_orm_model(user)
 
 
+@router.get("/users/me/device-keys", response_model=DeviceKeyListResponse)
+async def list_my_device_keys(
+    current_user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """List active sharing device keys for the current user."""
+    keys = SharingService(db).list_device_keys(current_user)
+    return DeviceKeyListResponse(
+        deviceKeys=[DeviceKeyInfo.from_orm_model(k) for k in keys],
+        totalCount=len(keys),
+    )
+
+
+@router.post("/users/me/device-keys", response_model=DeviceKeyInfo, status_code=201)
+async def register_my_device_key(
+    data: DeviceKeyCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Register or refresh a per-device public key for future share envelopes."""
+    key, error = SharingService(db).register_device_key(
+        current_user,
+        encryption_public_key=data.encryptionPublicKey,
+        signing_public_key=data.signingPublicKey,
+        device_label=data.deviceLabel,
+    )
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+    AuditService(db).log(
+        user_id=current_user.id,
+        action="sharing.device_key_register",
+        category="security",
+        resource_type="device_key",
+        resource_id=key.id,
+        details={"fingerprint": key.fingerprint},
+    )
+    return DeviceKeyInfo.from_orm_model(key)
+
+
+@router.delete("/users/me/device-keys/{device_key_id}", response_model=DeviceKeyRevokeResponse)
+async def revoke_my_device_key(
+    device_key_id: str,
+    current_user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Revoke one sharing device key and disable its active envelopes."""
+    success, error = SharingService(db).revoke_device_key(current_user, device_key_id)
+    if not success:
+        raise HTTPException(status_code=400, detail=error)
+    AuditService(db).log(
+        user_id=current_user.id,
+        action="sharing.device_key_revoke",
+        category="security",
+        resource_type="device_key",
+        resource_id=device_key_id,
+    )
+    return DeviceKeyRevokeResponse(success=True, deviceKeyId=device_key_id)
+
+
 @router.get("/users/me/private-key")
 async def get_my_private_key(
     current_user: User = Depends(get_current_user),
@@ -115,10 +188,20 @@ async def update_keypair(
     Called during registration or key rotation.
     """
     sharing_service = SharingService(db)
-    sharing_service.update_user_keypair(
+    _, error = sharing_service.update_user_keypair(
         user=current_user,
         public_key=data.publicKey,
-        encrypted_private_key=data.encryptedPrivateKey.model_dump(),
+        encrypted_private_key=data.encryptedPrivateKey,
+    )
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+
+    AuditService(db).log(
+        user_id=current_user.id,
+        action="sharing.key_update",
+        category="security",
+        resource_type="user_key",
+        resource_id=current_user.id,
     )
     
     return {"success": True, "message": "Keypair updated"}
@@ -146,16 +229,36 @@ async def share_file(
         owner=current_user,
         recipient_id=data.recipientId,
         encrypted_file_key_for_recipient=data.encryptedFileKeyForRecipient.model_dump(),
+        permission=data.permission,
+        expires_at=data.expiresAt,
+        recipient_public_key_fingerprint=data.recipientPublicKeyFingerprint,
+        device_envelopes=[e.model_dump() for e in data.deviceEnvelopes],
     )
     
     if error:
         raise HTTPException(status_code=400, detail=error)
+
+    AuditService(db).log(
+        user_id=current_user.id,
+        action="share.create",
+        category="sharing",
+        resource_type="share",
+        resource_id=share.id,
+        details={
+            "file_id": file_id,
+            "recipient_id": data.recipientId,
+            "permission": share.permission,
+            "public_key_fingerprint": share.recipient_key.fingerprint if share.recipient_key else None,
+        },
+    )
     
     return ShareFileResponse(
         shareId=share.id,
         fileId=share.file_id,
         recipientId=share.recipient_id,
         recipientEmail=share.recipient.email,
+        permission=share.permission,
+        publicKeyFingerprint=share.recipient_key.fingerprint if share.recipient_key else None,
         sharedAt=share.shared_at,
     )
 
@@ -182,11 +285,115 @@ async def unshare_file(
     
     if not success:
         raise HTTPException(status_code=400, detail=error)
+
+    AuditService(db).log(
+        user_id=current_user.id,
+        action="share.revoke",
+        category="sharing",
+        resource_type="share",
+        resource_id=file_id,
+        details={"recipient_id": recipient_id},
+    )
     
     return UnshareResponse(
         success=True,
         fileId=file_id,
         recipientId=recipient_id,
+    )
+
+
+@router.post("/files/{file_id}/share/{recipient_id}/strong-revoke", response_model=StrongRevokeResponse)
+async def strong_revoke_share(
+    file_id: str,
+    recipient_id: str,
+    current_user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Revoke server access and flag that client-side key rotation is required."""
+    success, error = SharingService(db).strong_revoke_share(file_id, current_user, recipient_id)
+    if not success:
+        raise HTTPException(status_code=400, detail=error)
+    AuditService(db).log(
+        user_id=current_user.id,
+        action="share.strong_revoke_requested",
+        category="sharing",
+        resource_type="file",
+        resource_id=file_id,
+        details={"recipient_id": recipient_id, "key_rotation_required": True},
+    )
+    return StrongRevokeResponse(
+        success=True,
+        fileId=file_id,
+        recipientId=recipient_id,
+        keyRotationRequired=True,
+        message="Recipient access was revoked. Re-encrypt the file with a new FileKey before granting access again.",
+    )
+
+
+@router.post("/files/{file_id}/rotate-content", response_model=RotateFileContentResponse)
+async def rotate_file_content(
+    file_id: str,
+    file: UploadFile = File(..., description="New encrypted file content (single blob)"),
+    metadata: str = Form(..., description="JSON-encoded RotateFileContentMetadata"),
+    current_user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Strong-revocation rewrap: replace the file's ciphertext and rotate
+    every active recipient's envelope under a new FileKey.
+
+    Recipients whose envelopes are not included in the request lose access
+    (their old envelopes are revoked and no new ones are written). All public
+    links on this file are deactivated.
+    """
+    try:
+        metadata_dict = json.loads(metadata)
+        parsed = RotateFileContentMetadata(**metadata_dict)
+    except (json.JSONDecodeError, Exception) as e:
+        raise HTTPException(status_code=400, detail=f"Invalid metadata: {e}")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty content not allowed")
+
+    file_service = FileService(db)
+    file_record = file_service.get_file_by_id(file_id, current_user.id)
+    if not file_record:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    summary, error = await file_service.rotate_file_content(
+        file_record=file_record,
+        owner=current_user,
+        encrypted_content=content,
+        encrypted_file_key=parsed.encryptedFileKey.model_dump(),
+        encrypted_filename=parsed.encryptedFilename.model_dump() if parsed.encryptedFilename else None,
+        encrypted_mime_type=parsed.encryptedMimeType.model_dump() if parsed.encryptedMimeType else None,
+        recipient_envelopes=[env.model_dump() for env in parsed.recipientEnvelopes],
+    )
+    if error or summary is None:
+        status_code = 413 if "quota" in (error or "").lower() or "too large" in (error or "").lower() else 400
+        raise HTTPException(status_code=status_code, detail=error or "Rotation failed")
+
+    AuditService(db).log(
+        user_id=current_user.id,
+        action="file.rotate_content",
+        category="sharing",
+        resource_type="file",
+        resource_id=file_id,
+        details={
+            "rotated_share_ids": summary["rotatedShareIds"],
+            "revoked_share_ids": summary["revokedShareIds"],
+            "revoked_link_ids": summary["revokedLinkIds"],
+            "key_version": summary["keyVersion"],
+        },
+    )
+
+    return RotateFileContentResponse(
+        success=True,
+        fileId=file_id,
+        rotatedShareIds=summary["rotatedShareIds"],
+        revokedShareIds=summary["revokedShareIds"],
+        revokedLinkIds=summary["revokedLinkIds"],
+        keyVersion=summary["keyVersion"],
     )
 
 
@@ -213,11 +420,18 @@ async def get_files_shared_with_me(
             encryptedFilename=share.file.encrypted_filename,
             encryptedMimeType=share.file.encrypted_mime_type if share.file.encrypted_mime_type else None,
             encryptedSize=share.file.encrypted_size,
+            storageMode=getattr(share.file, "storage_mode", "single"),
+            chunkManifest=getattr(share.file, "chunk_manifest", None),
             ownerId=share.owner_id,
             ownerEmail=share.owner.email,
             recipientId=share.recipient_id,
             recipientEmail=share.recipient.email,
             encryptedFileKeyForRecipient=share.encrypted_file_key_for_recipient,
+            permission=share.permission,
+            expiresAt=share.expires_at,
+            revokedAt=share.revoked_at,
+            publicKeyFingerprint=share.recipient_key.fingerprint if share.recipient_key else None,
+            envelopes=[ShareEnvelopeInfo.from_orm_model(e) for e in share.envelopes if e.revoked_at is None],
             sharedAt=share.shared_at,
         ))
     
@@ -248,11 +462,19 @@ async def get_files_shared_by_me(
             encryptedFilename=share.file.encrypted_filename,
             encryptedMimeType=share.file.encrypted_mime_type if share.file.encrypted_mime_type else None,
             encryptedSize=share.file.encrypted_size,
+            storageMode=getattr(share.file, "storage_mode", "single"),
+            chunkManifest=getattr(share.file, "chunk_manifest", None),
             ownerId=share.owner_id,
             ownerEmail=share.owner.email,
             recipientId=share.recipient_id,
             recipientEmail=share.recipient.email,
             encryptedFileKeyForRecipient=share.encrypted_file_key_for_recipient,
+            encryptedFileKeyForOwner=share.file.encrypted_file_key,
+            permission=share.permission,
+            expiresAt=share.expires_at,
+            revokedAt=share.revoked_at,
+            publicKeyFingerprint=share.recipient_key.fingerprint if share.recipient_key else None,
+            envelopes=[ShareEnvelopeInfo.from_orm_model(e) for e in share.envelopes if e.revoked_at is None],
             sharedAt=share.shared_at,
         ))
     
@@ -262,7 +484,7 @@ async def get_files_shared_by_me(
     )
 
 
-@router.get("/files/{file_id}/shares")
+@router.get("/files/{file_id}/shares", response_model=FileSharesResponse)
 async def get_file_shares(
     file_id: str,
     current_user: User = Depends(get_current_user),
@@ -285,16 +507,21 @@ async def get_file_shares(
     shares = db.query(SharedFile).filter(
         SharedFile.file_id == file_id,
         SharedFile.owner_id == current_user.id,
+        SharedFile.revoked_at.is_(None),
+        or_(SharedFile.expires_at.is_(None), SharedFile.expires_at > datetime.utcnow()),
     ).all()
     
-    return {
-        "fileId": file_id,
-        "shares": [
-            {
-                "recipientId": s.recipient_id,
-                "recipientEmail": s.recipient.email,
-                "sharedAt": s.shared_at,
-            }
+    return FileSharesResponse(
+        fileId=file_id,
+        shares=[
+            FileShareInfo(
+                recipientId=s.recipient_id,
+                recipientEmail=s.recipient.email,
+                permission=s.permission,
+                publicKeyFingerprint=s.recipient_key.fingerprint if s.recipient_key else None,
+                envelopeCount=len([e for e in s.envelopes if e.revoked_at is None]),
+                sharedAt=s.shared_at,
+            )
             for s in shares
-        ]
-    }
+        ],
+    )

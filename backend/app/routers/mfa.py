@@ -28,6 +28,7 @@ from app.schemas import (
 )
 from app.schemas.file import EncryptedBlob
 from app.services.mfa import MFAService
+from app.services.audit import AuditService
 from app.services.session import SessionService
 from app.routers.auth import get_current_user, get_current_auth_user, get_session_token
 from app.models.user import User
@@ -94,6 +95,14 @@ async def setup_mfa(
     
     if not success:
         raise HTTPException(status_code=400, detail=error)
+
+    AuditService(db).log(
+        user_id=current_user.id,
+        action="mfa.enable",
+        category="auth",
+        resource_type="user",
+        resource_id=current_user.id,
+    )
     
     return MFASetupResponse(
         success=True,
@@ -122,6 +131,15 @@ async def disable_mfa(
     
     if not success:
         raise HTTPException(status_code=400, detail=error)
+
+    AuditService(db).log(
+        user_id=current_user.id,
+        action="mfa.disable",
+        category="auth",
+        resource_type="user",
+        resource_id=current_user.id,
+        severity="warning",
+    )
     
     return MFADisableResponse(
         success=True,
@@ -157,9 +175,27 @@ async def verify_mfa(
         )
         
         if not success:
+            AuditService(db).log(
+                user_id=current_user.id,
+                action="mfa.recovery_failed",
+                category="auth",
+                outcome="failure",
+                severity="warning",
+                resource_type="session",
+                resource_id=None,
+            )
             raise HTTPException(status_code=400, detail=error)
 
         SessionService(db).promote_session_to_full(session_token)
+
+        AuditService(db).log(
+            user_id=current_user.id,
+            action="mfa.recovery",
+            category="auth",
+            resource_type="session",
+            resource_id=None,
+            details={"recovery_codes_remaining": remaining},
+        )
         
         return MFAVerifyResponse(
             verified=True,
@@ -169,9 +205,25 @@ async def verify_mfa(
         )
     else:
         if not mfa_service.verify_totp_for_user(current_user, data.code):
+            AuditService(db).log(
+                user_id=current_user.id,
+                action="mfa.verify",
+                category="auth",
+                outcome="failure",
+                severity="warning",
+                resource_type="session",
+                resource_id=None,
+            )
             raise HTTPException(status_code=400, detail="Invalid verification code")
 
         SessionService(db).promote_session_to_full(session_token)
+        AuditService(db).log(
+            user_id=current_user.id,
+            action="mfa.verify",
+            category="auth",
+            resource_type="session",
+            resource_id=None,
+        )
         return MFAVerifyResponse(
             verified=True,
             success=True,

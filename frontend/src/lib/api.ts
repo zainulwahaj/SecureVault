@@ -10,13 +10,21 @@
 import type { 
   ApiResponse, 
   SessionInfo, 
+  SessionListResponse,
+  RevokeSessionsResponse,
   User,
   ZKRegistrationData,
   ZKLoginChallenge,
+  EncryptedFileMetadata,
   FileListResponse,
   FileUploadResponse,
+  FileUploadSessionResponse,
+  FileUploadPartResponse,
+  ChunkManifest,
   FileDeleteResponse,
+  StorageUsage,
   UserPublicInfo,
+  FileShareInfo,
   SharedFile,
   ShareFileResponse,
   MFAStatus,
@@ -28,11 +36,51 @@ import type {
   SharedLinkResponse,
   SharedLinkListResponse,
   SharedLinkPublicInfo,
+  EncryptedBlobData,
+  AuditIntegrityResponse,
   AuditListResponse,
 } from '@/types';
 import type { EncryptedBlob } from './crypto/types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '/api';
+
+const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const CSRF_EXEMPT_ENDPOINTS = new Set([
+  '/auth/register',
+  '/auth/login/challenge',
+  '/auth/login/verify',
+]);
+
+let cachedCsrfToken: string | null = null;
+
+async function getCsrfToken(): Promise<string | null> {
+  if (cachedCsrfToken) return cachedCsrfToken;
+  try {
+    const response = await fetch(`${API_BASE}/auth/csrf`, {
+      method: 'GET',
+      credentials: 'include',
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    cachedCsrfToken = typeof data.csrfToken === 'string' ? data.csrfToken : null;
+    return cachedCsrfToken;
+  } catch {
+    return null;
+  }
+}
+
+function resetCsrfToken() {
+  cachedCsrfToken = null;
+}
+
+async function getCsrfHeaders(endpoint: string, method: string): Promise<Record<string, string>> {
+  const normalizedMethod = method.toUpperCase();
+  if (!UNSAFE_METHODS.has(normalizedMethod) || CSRF_EXEMPT_ENDPOINTS.has(endpoint)) {
+    return {};
+  }
+  const token = await getCsrfToken();
+  return token ? { 'X-CSRF-Token': token } : {};
+}
 
 /**
  * Generic fetch wrapper with error handling
@@ -42,12 +90,17 @@ async function fetchApi<T>(
   options: RequestInit = {}
 ): Promise<ApiResponse<T>> {
   try {
+    const method = options.method || 'GET';
+    const headers = new Headers(options.headers);
+    if (!headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json');
+    }
+    const csrf = await getCsrfHeaders(endpoint, method);
+    Object.entries(csrf).forEach(([key, value]) => headers.set(key, value));
+
     const response = await fetch(`${API_BASE}${endpoint}`, {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
+      headers,
       credentials: 'include', // Important for session cookies
     });
 
@@ -156,9 +209,11 @@ export async function upgradeAuthKey(payload: {
  * Logout current user (destroy session)
  */
 export async function logout(): Promise<ApiResponse<void>> {
-  return fetchApi<void>('/auth/logout', {
+  const result = await fetchApi<void>('/auth/logout', {
     method: 'POST',
   });
+  resetCsrfToken();
+  return result;
 }
 
 export async function changePassword(payload: {
@@ -180,6 +235,21 @@ export async function changePassword(payload: {
  */
 export async function getCurrentUser(): Promise<ApiResponse<User>> {
   return fetchApi<User>('/auth/me');
+}
+
+export async function listSessions(): Promise<ApiResponse<SessionListResponse>> {
+  return fetchApi<SessionListResponse>('/auth/sessions');
+}
+
+export async function revokeAllSessions(keepCurrent: boolean = true): Promise<ApiResponse<RevokeSessionsResponse>> {
+  const result = await fetchApi<RevokeSessionsResponse>('/auth/sessions/revoke-all', {
+    method: 'POST',
+    body: JSON.stringify({ keepCurrent }),
+  });
+  if (!keepCurrent && result.success) {
+    resetCsrfToken();
+  }
+  return result;
 }
 
 export async function updateProfile(payload: {
@@ -234,10 +304,12 @@ export async function uploadFile(
       formData.append('folder_id', folderId);
     }
     
+    const csrf = await getCsrfHeaders('/files/upload', 'POST');
     const response = await fetch(`${API_BASE}/files/upload`, {
       method: 'POST',
       body: formData,
       credentials: 'include',
+      headers: csrf,
       // Don't set Content-Type - browser will set it with boundary for multipart
     });
     
@@ -257,6 +329,115 @@ export async function uploadFile(
       error: error instanceof Error ? error.message : 'Upload failed',
     };
   }
+}
+
+export async function createUploadSession(payload: {
+  metadata: {
+    encryptedFileKey: { ciphertext: string; algorithm: string; version: number };
+    encryptedFilename: { ciphertext: string; algorithm: string; version: number };
+    encryptedMimeType: { ciphertext: string; algorithm: string; version: number };
+  };
+  totalParts: number;
+  totalSize: number;
+  chunkSize: number;
+  folderId?: string | null;
+  idempotencyKey?: string | null;
+}): Promise<ApiResponse<FileUploadSessionResponse>> {
+  return fetchApi<FileUploadSessionResponse>('/files/uploads', {
+    method: 'POST',
+    body: JSON.stringify({
+      metadata: payload.metadata,
+      totalParts: payload.totalParts,
+      totalSize: payload.totalSize,
+      chunkSize: payload.chunkSize,
+      folderId: payload.folderId ?? null,
+      idempotencyKey: payload.idempotencyKey ?? null,
+    }),
+  });
+}
+
+export async function uploadFilePart(
+  uploadId: string,
+  partNumber: number,
+  encryptedContent: Uint8Array,
+): Promise<ApiResponse<FileUploadPartResponse>> {
+  try {
+    const formData = new FormData();
+    const arrayBuffer = new ArrayBuffer(encryptedContent.length);
+    new Uint8Array(arrayBuffer).set(encryptedContent);
+    formData.append('file', new Blob([arrayBuffer], { type: 'application/octet-stream' }), 'part');
+
+    const endpoint = `/files/uploads/${uploadId}/parts/${partNumber}`;
+    const csrf = await getCsrfHeaders(endpoint, 'PUT');
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+      method: 'PUT',
+      body: formData,
+      credentials: 'include',
+      headers: csrf,
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.detail || 'Part upload failed' };
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Part upload failed' };
+  }
+}
+
+export async function completeUploadSession(
+  uploadId: string,
+  manifest: ChunkManifest,
+): Promise<ApiResponse<FileUploadResponse>> {
+  return fetchApi<FileUploadResponse>(`/files/uploads/${uploadId}/complete`, {
+    method: 'POST',
+    body: JSON.stringify({ manifest }),
+  });
+}
+
+export async function abortUploadSession(uploadId: string): Promise<ApiResponse<{ uploadId: string; aborted: boolean }>> {
+  return fetchApi<{ uploadId: string; aborted: boolean }>(`/files/uploads/${uploadId}`, { method: 'DELETE' });
+}
+
+export async function replaceFileContent(
+  fileId: string,
+  encryptedContent: Uint8Array,
+  metadata: {
+    encryptedFileKey: { ciphertext: string; algorithm: string; version: number };
+    encryptedFilename: { ciphertext: string; algorithm: string; version: number };
+    encryptedMimeType: { ciphertext: string; algorithm: string; version: number };
+  },
+): Promise<ApiResponse<EncryptedFileMetadata>> {
+  try {
+    const formData = new FormData();
+
+    const arrayBuffer = new ArrayBuffer(encryptedContent.length);
+    new Uint8Array(arrayBuffer).set(encryptedContent);
+    const blob = new Blob([arrayBuffer], { type: 'application/octet-stream' });
+    formData.append('file', blob, 'encrypted');
+    formData.append('metadata', JSON.stringify(metadata));
+
+    const csrf = await getCsrfHeaders(`/files/${fileId}/content`, 'PUT');
+    const response = await fetch(`${API_BASE}/files/${fileId}/content`, {
+      method: 'PUT',
+      body: formData,
+      credentials: 'include',
+      headers: csrf,
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      return { success: false, error: data.detail || 'Replace failed' };
+    }
+    return { success: true, data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Replace failed',
+    };
+  }
+}
+
+export async function getStorageUsage(): Promise<ApiResponse<StorageUsage>> {
+  return fetchApi<StorageUsage>('/files/usage');
 }
 
 /**
@@ -334,8 +515,8 @@ export async function searchUsers(query: string): Promise<ApiResponse<UserPublic
 /**
  * Get a user's public key for envelope encryption
  */
-export async function getUserPublicKey(userId: string): Promise<ApiResponse<{ publicKey: string }>> {
-  return fetchApi<{ publicKey: string }>(`/sharing/users/${userId}/public-key`);
+export async function getUserPublicKey(userId: string): Promise<ApiResponse<UserPublicInfo>> {
+  return fetchApi<UserPublicInfo>(`/sharing/users/${userId}/public-key`);
 }
 
 /**
@@ -348,13 +529,27 @@ export async function getUserPublicKey(userId: string): Promise<ApiResponse<{ pu
 export async function shareFile(
   fileId: string,
   recipientId: string,
-  encryptedFileKeyForRecipient: { ciphertext: string; algorithm: string; version: number }
+  encryptedFileKeyForRecipient: { ciphertext: string; algorithm: string; version: number },
+  options?: {
+    permission?: string;
+    expiresAt?: string | null;
+    recipientPublicKeyFingerprint?: string | null;
+    deviceEnvelopes?: Array<{
+      recipientDeviceKeyId: string;
+      recipientDeviceKeyFingerprint: string;
+      encryptedFileKey: { ciphertext: string; algorithm: string; version: number };
+    }>;
+  },
 ): Promise<ApiResponse<ShareFileResponse>> {
   return fetchApi<ShareFileResponse>(`/sharing/files/${fileId}/share`, {
     method: 'POST',
     body: JSON.stringify({
       recipientId,
+      recipientPublicKeyFingerprint: options?.recipientPublicKeyFingerprint || null,
+      permission: options?.permission || 'read',
+      expiresAt: options?.expiresAt || null,
       encryptedFileKeyForRecipient,
+      deviceEnvelopes: options?.deviceEnvelopes || [],
     }),
   });
 }
@@ -366,6 +561,84 @@ export async function unshareFile(fileId: string, recipientId: string): Promise<
   return fetchApi<void>(`/sharing/files/${fileId}/share/${recipientId}`, {
     method: 'DELETE',
   });
+}
+
+export async function strongRevokeShare(fileId: string, recipientId: string): Promise<ApiResponse<{
+  success: boolean;
+  fileId: string;
+  recipientId: string;
+  keyRotationRequired: boolean;
+  message: string;
+}>> {
+  return fetchApi<{ success: boolean; fileId: string; recipientId: string; keyRotationRequired: boolean; message: string }>(
+    `/sharing/files/${fileId}/share/${recipientId}/strong-revoke`,
+    { method: 'POST' },
+  );
+}
+
+export type EncryptedBlobPayload = { ciphertext: string; algorithm: string; version: number };
+
+export type RotateRecipientEnvelopePayload = {
+  recipientId: string;
+  recipientPublicKeyFingerprint: string;
+  encryptedFileKeyForRecipient: EncryptedBlobPayload;
+  deviceEnvelopes?: Array<{
+    recipientDeviceKeyId: string;
+    recipientDeviceKeyFingerprint: string;
+    encryptedFileKey: EncryptedBlobPayload;
+  }>;
+};
+
+export type RotateFileContentResponse = {
+  success: boolean;
+  fileId: string;
+  rotatedShareIds: string[];
+  revokedShareIds: string[];
+  revokedLinkIds: string[];
+  keyVersion: number;
+};
+
+/**
+ * Rotate a file's FileKey and rewrap envelopes for remaining recipients.
+ * This is the cryptographic half of strong revocation: the previous FileKey
+ * is no longer usable by any past recipient or public link.
+ */
+export async function rotateFileContent(
+  fileId: string,
+  encryptedContent: Uint8Array,
+  metadata: {
+    encryptedFileKey: EncryptedBlobPayload;
+    encryptedFilename?: EncryptedBlobPayload;
+    encryptedMimeType?: EncryptedBlobPayload;
+    recipientEnvelopes: RotateRecipientEnvelopePayload[];
+  },
+): Promise<ApiResponse<RotateFileContentResponse>> {
+  try {
+    const formData = new FormData();
+    const buffer = new ArrayBuffer(encryptedContent.length);
+    new Uint8Array(buffer).set(encryptedContent);
+    formData.append('file', new Blob([buffer], { type: 'application/octet-stream' }), 'encrypted');
+    formData.append('metadata', JSON.stringify(metadata));
+
+    const path = `/sharing/files/${fileId}/rotate-content`;
+    const csrf = await getCsrfHeaders(path, 'POST');
+    const response = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      body: formData,
+      credentials: 'include',
+      headers: csrf,
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      return { success: false, error: data.detail || 'Rotation failed' };
+    }
+    return { success: true, data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Rotation failed',
+    };
+  }
 }
 
 /**
@@ -385,8 +658,8 @@ export async function getFilesSharedByMe(): Promise<ApiResponse<{ shares: Shared
 /**
  * Get all shares for a specific file
  */
-export async function getFileShares(fileId: string): Promise<ApiResponse<{ shares: SharedFile[] }>> {
-  return fetchApi<{ shares: SharedFile[] }>(`/sharing/files/${fileId}/shares`);
+export async function getFileShares(fileId: string): Promise<ApiResponse<{ fileId: string; shares: FileShareInfo[] }>> {
+  return fetchApi<{ fileId: string; shares: FileShareInfo[] }>(`/sharing/files/${fileId}/shares`);
 }
 
 /**
@@ -584,16 +857,17 @@ export async function getLinkInfo(token: string): Promise<ApiResponse<SharedLink
   return fetchApi<SharedLinkPublicInfo>(`/links/public/${token}`);
 }
 
-export async function verifyLinkPassword(token: string, password: string): Promise<ApiResponse<{ valid: boolean }>> {
-  return fetchApi<{ valid: boolean }>(`/links/public/${token}/verify-password`, {
+export async function verifyLinkPassword(token: string, password: string): Promise<ApiResponse<{ valid: boolean; downloadTicket?: string | null; encryptedFilename?: EncryptedBlobData | null; encryptedFileKey?: EncryptedBlobData | null; storageMode?: string; chunkManifest?: ChunkManifest | null }>> {
+  return fetchApi<{ valid: boolean; downloadTicket?: string | null; encryptedFilename?: EncryptedBlobData | null; encryptedFileKey?: EncryptedBlobData | null; storageMode?: string; chunkManifest?: ChunkManifest | null }>(`/links/public/${token}/verify-password`, {
     method: 'POST',
     body: JSON.stringify({ password }),
   });
 }
 
-export async function downloadViaLink(token: string): Promise<ApiResponse<Uint8Array>> {
+export async function downloadViaLink(token: string, downloadTicket?: string | null): Promise<ApiResponse<Uint8Array>> {
   try {
-    const response = await fetch(`${API_BASE}/links/public/${token}/download`, {
+    const params = downloadTicket ? `?ticket=${encodeURIComponent(downloadTicket)}` : '';
+    const response = await fetch(`${API_BASE}/links/public/${token}/download${params}`, {
       method: 'GET',
       credentials: 'include',
     });
@@ -615,14 +889,143 @@ export async function downloadViaLink(token: string): Promise<ApiResponse<Uint8A
 export async function listAuditLog(params?: {
   action?: string;
   resourceType?: string;
+  outcome?: string;
   limit?: number;
   offset?: number;
 }): Promise<ApiResponse<AuditListResponse>> {
   const searchParams = new URLSearchParams();
   if (params?.action) searchParams.set('action', params.action);
   if (params?.resourceType) searchParams.set('resource_type', params.resourceType);
+  if (params?.outcome) searchParams.set('outcome', params.outcome);
   if (params?.limit) searchParams.set('limit', String(params.limit));
   if (params?.offset) searchParams.set('offset', String(params.offset));
   const qs = searchParams.toString();
   return fetchApi<AuditListResponse>(`/audit/${qs ? `?${qs}` : ''}`);
 }
+
+export async function verifyAuditIntegrity(): Promise<ApiResponse<AuditIntegrityResponse>> {
+  return fetchApi<AuditIntegrityResponse>('/audit/integrity');
+}
+
+// ============================================================================
+// Account policy
+// ============================================================================
+
+export type AccountPolicy = {
+  plan: string;
+  storageBytes: number;
+  maxFileBytes: number;
+  maxFileCount: number;
+  maxVersionsPerFile: number;
+  maxLinksPerFile: number;
+  maxLinkExpiryDays: number;
+  maxTrashDays: number;
+};
+
+export async function getAccountPolicy(): Promise<ApiResponse<AccountPolicy>> {
+  return fetchApi<AccountPolicy>('/files/policy');
+}
+
+// ============================================================================
+// Recovery key API
+// ============================================================================
+
+export type RecoveryStatus = { recoveryEnabled: boolean };
+
+export type RecoveryChallengePayload = {
+  userId: string;
+  email: string;
+  recoverySalt: string;
+  recoveryKdfParams: { algorithm: string; iterations: number; keyLength: number; version: number };
+  encryptedVaultKeyRecovery: EncryptedBlobPayload;
+  recoveryChallengeId: string;
+  recoveryChallenge: string;
+};
+
+export async function getRecoveryStatus(): Promise<ApiResponse<RecoveryStatus>> {
+  return fetchApi<RecoveryStatus>('/auth/recovery/status');
+}
+
+export async function setupRecovery(body: {
+  recoverySalt: string;
+  recoveryKdfParams: { algorithm: string; iterations: number; keyLength: number; version: number };
+  encryptedVaultKeyRecovery: EncryptedBlobPayload;
+}): Promise<ApiResponse<RecoveryStatus>> {
+  return fetchApi<RecoveryStatus>('/auth/recovery/setup', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function disableRecovery(): Promise<ApiResponse<RecoveryStatus>> {
+  return fetchApi<RecoveryStatus>('/auth/recovery', { method: 'DELETE' });
+}
+
+export async function getRecoveryChallenge(email: string): Promise<ApiResponse<RecoveryChallengePayload>> {
+  return fetchApi<RecoveryChallengePayload>('/auth/recovery/challenge', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function submitRecoveryReset(body: {
+  email: string;
+  recoveryChallengeId: string;
+  signature: string;
+  newSalt: string;
+  newKdfParams: { algorithm: string; iterations: number; keyLength: number; version: number };
+  newEncryptedVaultKey: EncryptedBlobPayload;
+  newLoginProof: string;
+  newEncryptedAuthPrivateKey: EncryptedBlobPayload;
+  newEncryptedPrivateKey?: string;
+  newEncryptedMfaSecret?: EncryptedBlobPayload;
+  newRecoverySalt?: string;
+  newRecoveryKdfParams?: { algorithm: string; iterations: number; keyLength: number; version: number };
+  newEncryptedVaultKeyRecovery?: EncryptedBlobPayload;
+}): Promise<ApiResponse<{ success: boolean; userId: string; email: string }>> {
+  return fetchApi('/auth/recovery/reset', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+// ============================================================================
+// WebAuthn / passkeys API
+// ============================================================================
+
+export type WebAuthnCredentialItem = {
+  id: string;
+  label: string | null;
+  transports: string[] | null;
+  aaguid: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+};
+
+export async function listWebAuthnCredentials(): Promise<ApiResponse<{ credentials: WebAuthnCredentialItem[] }>> {
+  return fetchApi('/auth/webauthn/credentials');
+}
+
+export async function revokeWebAuthnCredential(credentialId: string): Promise<ApiResponse<{ success: boolean }>> {
+  return fetchApi(`/auth/webauthn/credentials/${credentialId}`, { method: 'DELETE' });
+}
+
+export async function webauthnRegisterBegin(): Promise<ApiResponse<{ options: PublicKeyCredentialCreationOptionsJSON; challengeId: string }>> {
+  return fetchApi('/auth/webauthn/register/begin', { method: 'POST', body: JSON.stringify({}) });
+}
+
+export async function webauthnRegisterComplete(body: { challengeId: string; label?: string; credential: unknown }): Promise<ApiResponse<{ success: boolean }>> {
+  return fetchApi('/auth/webauthn/register/complete', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function webauthnAuthBegin(email?: string): Promise<ApiResponse<{ options: PublicKeyCredentialRequestOptionsJSON; challengeId: string }>> {
+  return fetchApi('/auth/webauthn/auth/begin', { method: 'POST', body: JSON.stringify({ email }) });
+}
+
+export async function webauthnAuthComplete(body: { challengeId: string; credential: unknown }): Promise<ApiResponse<{ success: boolean }>> {
+  return fetchApi('/auth/webauthn/auth/complete', { method: 'POST', body: JSON.stringify(body) });
+}
+
+// Browser WebAuthn options types (minimal — using the WebAuthn API ones).
+export type PublicKeyCredentialCreationOptionsJSON = Record<string, unknown>;
+export type PublicKeyCredentialRequestOptionsJSON = Record<string, unknown>;

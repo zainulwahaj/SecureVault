@@ -24,6 +24,12 @@ class LinkResponse(BaseModel):
     id: str
     token: str
     fileId: str
+    encryptedFilename: Optional[dict] = None
+    encryptedMimeType: Optional[dict] = None
+    encryptedFileKey: Optional[dict] = None
+    encryptedSize: Optional[int] = None
+    storageMode: str = "single"
+    chunkManifest: Optional[dict] = None
     passwordProtected: bool
     expiresAt: Optional[datetime] = None
     maxDownloads: Optional[int] = None
@@ -37,6 +43,12 @@ class LinkResponse(BaseModel):
             id=link.id,
             token=link.token,
             fileId=link.file_id,
+            encryptedFilename=link.file.encrypted_filename if link.file else None,
+            encryptedMimeType=link.file.encrypted_mime_type if link.file else None,
+            encryptedFileKey=link.file.encrypted_file_key if link.file else None,
+            encryptedSize=link.file.encrypted_size if link.file else None,
+            storageMode=getattr(link.file, "storage_mode", "single") if link.file else "single",
+            chunkManifest=getattr(link.file, "chunk_manifest", None) if link.file else None,
             passwordProtected=link.password_hash is not None,
             expiresAt=link.expires_at,
             maxDownloads=link.max_downloads,
@@ -55,8 +67,10 @@ class LinkListResponse(BaseModel):
 class LinkPublicInfo(BaseModel):
     """Non-sensitive info returned to anyone with the token."""
     token: str
-    encryptedFilename: dict
-    encryptedFileKey: dict
+    encryptedFilename: Optional[dict] = None
+    encryptedFileKey: Optional[dict] = None
+    storageMode: str = "single"
+    chunkManifest: Optional[dict] = None
     passwordRequired: bool
     expiresAt: Optional[datetime] = None
     maxDownloads: Optional[int] = None
@@ -71,3 +85,8 @@ class VerifyLinkPasswordRequest(BaseModel):
 class VerifyLinkPasswordResponse(BaseModel):
     """Password verification result."""
     valid: bool
+    downloadTicket: Optional[str] = None
+    encryptedFilename: Optional[dict] = None
+    encryptedFileKey: Optional[dict] = None
+    storageMode: str = "single"
+    chunkManifest: Optional[dict] = None

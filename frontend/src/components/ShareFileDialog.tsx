@@ -4,11 +4,13 @@ import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { toast } from 'sonner';
-import type { UserPublicInfo, DecryptedFile, EncryptedBlobData } from '@/types';
+import type { UserPublicInfo, DecryptedFile, EncryptedBlobData, FileShareInfo } from '@/types';
 import type { EncryptedBlob } from '@/lib/crypto/types';
 import * as api from '@/lib/api';
+import { base64ToBytes } from '@/lib/crypto/kdf';
 import { decryptFileKey } from '@/lib/crypto';
 import { encryptFileKeyForRecipient } from '@/lib/crypto/keypair';
+import { rotateFileContent, type RotationRecipient } from '@/lib/sharing/rotation';
 import {
   Dialog,
   DialogContent,
@@ -28,6 +30,17 @@ interface ShareFileDialogProps {
   onClose: () => void;
 }
 
+async function fingerprintPublicKey(publicKey: string): Promise<string> {
+  const raw = base64ToBytes(publicKey);
+  if (raw.length !== 32) throw new Error('Invalid public key');
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', raw as BufferSource));
+  const hex = Array.from(digest)
+    .map(byte => byte.toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase();
+  return hex.slice(0, 32).match(/.{1,4}/g)?.join(':') || '';
+}
+
 export default function ShareFileDialog({ file, isOpen, onClose }: ShareFileDialogProps) {
   const { getVaultKey } = useAuth();
   const { confirm } = useConfirm();
@@ -36,7 +49,7 @@ export default function ShareFileDialog({ file, isOpen, onClose }: ShareFileDial
   const [isSearching, setIsSearching] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [existingShares, setExistingShares] = useState<{ recipientId: string; recipientEmail: string }[]>([]);
+  const [existingShares, setExistingShares] = useState<FileShareInfo[]>([]);
 
   useEffect(() => {
     if (isOpen) loadExistingShares();
@@ -88,6 +101,34 @@ export default function ShareFileDialog({ file, isOpen, onClose }: ShareFileDial
     setError(null);
 
     try {
+      const keyResponse = await api.getUserPublicKey(recipient.id);
+      if (!keyResponse.success || !keyResponse.data) {
+        toast.error('Recipient key is unavailable');
+        return;
+      }
+
+      const recipientKey = keyResponse.data;
+      if (!recipientKey.publicKeyFingerprint) {
+        toast.error('Recipient key cannot be verified');
+        return;
+      }
+
+      const computedFingerprint = await fingerprintPublicKey(recipientKey.publicKey);
+      if (computedFingerprint !== recipientKey.publicKeyFingerprint) {
+        toast.error('Recipient key fingerprint is invalid');
+        return;
+      }
+
+      if (
+        recipient.publicKeyFingerprint
+        && recipient.publicKeyFingerprint !== recipientKey.publicKeyFingerprint
+      ) {
+        toast.error('Recipient key changed', {
+          description: 'Search for the recipient again before sharing.',
+        });
+        return;
+      }
+
       const fileKeyResult = await decryptFileKey(toEncryptedBlob(file.encryptedFileKey), vaultKey);
       if (!fileKeyResult.success || !fileKeyResult.data) {
         toast.error('Failed to decrypt file key');
@@ -95,19 +136,50 @@ export default function ShareFileDialog({ file, isOpen, onClose }: ShareFileDial
       }
 
       const fileKey = fileKeyResult.data;
-      const encryptedForRecipient = await encryptFileKeyForRecipient(fileKey, recipient.publicKey);
+      const encryptedForRecipient = await encryptFileKeyForRecipient(fileKey, recipientKey.publicKey);
+      const deviceEnvelopes = [];
+      for (const deviceKey of recipientKey.deviceKeys || []) {
+        const computedDeviceFingerprint = await fingerprintPublicKey(deviceKey.encryptionPublicKey);
+        if (computedDeviceFingerprint !== deviceKey.fingerprint) {
+          fileKey.fill(0);
+          toast.error('Recipient device key fingerprint is invalid');
+          return;
+        }
+        const encryptedForDevice = await encryptFileKeyForRecipient(fileKey, deviceKey.encryptionPublicKey);
+        deviceEnvelopes.push({
+          recipientDeviceKeyId: deviceKey.id,
+          recipientDeviceKeyFingerprint: deviceKey.fingerprint,
+          encryptedFileKey: {
+            ciphertext: encryptedForDevice,
+            algorithm: 'x25519-xsalsa20-poly1305',
+            version: 1,
+          },
+        });
+      }
       fileKey.fill(0);
 
       const response = await api.shareFile(
         file.id,
         recipient.id,
-        { ciphertext: encryptedForRecipient, algorithm: 'x25519-xsalsa20-poly1305', version: 1 }
+        { ciphertext: encryptedForRecipient, algorithm: 'x25519-xsalsa20-poly1305', version: 1 },
+        {
+          permission: 'read',
+          recipientPublicKeyFingerprint: recipientKey.publicKeyFingerprint || null,
+          deviceEnvelopes,
+        }
       );
 
       if (response.success) {
         toast.success(`Shared with ${recipient.email}`);
         setSearchResults(prev => prev.filter(u => u.id !== recipient.id));
-        setExistingShares(prev => [...prev, { recipientId: recipient.id, recipientEmail: recipient.email }]);
+        setExistingShares(prev => [...prev, {
+          recipientId: recipient.id,
+          recipientEmail: recipient.email,
+          publicKeyFingerprint: response.data?.publicKeyFingerprint || recipientKey.publicKeyFingerprint,
+          permission: response.data?.permission || 'read',
+          sharedAt: response.data?.sharedAt || new Date().toISOString(),
+          envelopeCount: deviceEnvelopes.length || 1,
+        }]);
       } else {
         toast.error('Failed to share', { description: response.error });
       }
@@ -121,24 +193,79 @@ export default function ShareFileDialog({ file, isOpen, onClose }: ShareFileDial
   const handleUnshare = useCallback(async (recipientId: string, recipientEmail: string) => {
     const confirmed = await confirm({
       title: 'Remove Access',
-      message: `Remove ${recipientEmail}'s access to "${file.filename}"?`,
-      confirmLabel: 'Remove',
+      message: `Remove ${recipientEmail}'s access to "${file.filename}"? The file will be re-encrypted under a new key so the removed recipient can never decrypt future copies.`,
+      confirmLabel: 'Remove & re-encrypt',
       variant: 'destructive',
     });
     if (!confirmed) return;
 
     try {
-      const response = await api.unshareFile(file.id, recipientId);
-      if (response.success) {
-        setExistingShares(prev => prev.filter(s => s.recipientId !== recipientId));
-        toast.success('Access removed');
-      } else {
-        toast.error('Failed to remove access', { description: response.error });
+      const revoke = await api.strongRevokeShare(file.id, recipientId);
+      if (!revoke.success) {
+        toast.error('Failed to remove access', { description: revoke.error });
+        return;
       }
+
+      // Server-side access is now cut. Continue with the cryptographic rotation
+      // so the previous FileKey is no longer usable by the revoked recipient.
+      const vaultKey = await getVaultKey();
+      if (!vaultKey) {
+        toast.warning('Access revoked, but session ended before re-encryption', {
+          description: 'Sign back in and re-encrypt the file from the share dialog.',
+        });
+        return;
+      }
+
+      const remainingShares = existingShares.filter(s => s.recipientId !== recipientId);
+      const remainingRecipients: RotationRecipient[] = [];
+      for (const share of remainingShares) {
+        const keyResponse = await api.getUserPublicKey(share.recipientId);
+        if (!keyResponse.success || !keyResponse.data) {
+          toast.error('Cannot fetch recipient key', { description: keyResponse.error });
+          return;
+        }
+        const fingerprint = keyResponse.data.publicKeyFingerprint || share.publicKeyFingerprint;
+        if (!fingerprint) {
+          toast.error('Recipient missing fingerprint', { description: share.recipientEmail });
+          return;
+        }
+        remainingRecipients.push({
+          recipientId: share.recipientId,
+          publicKey: keyResponse.data.publicKey,
+          publicKeyFingerprint: fingerprint,
+          deviceKeys: keyResponse.data.deviceKeys?.map(d => ({
+            id: d.id,
+            fingerprint: d.fingerprint,
+            encryptionPublicKey: d.encryptionPublicKey,
+          })),
+        });
+      }
+
+      toast.info('Re-encrypting under a new key…');
+      const rotation = await rotateFileContent(
+        {
+          id: file.id,
+          encryptedFileKey: toEncryptedBlob(file.encryptedFileKey),
+          filename: file.filename,
+          mimeType: file.mimeType,
+          chunkManifest: file.chunkManifest ?? null,
+        },
+        vaultKey,
+        remainingRecipients,
+      );
+      if (!rotation.success) {
+        toast.error('Re-encryption failed', { description: rotation.error });
+        return;
+      }
+
+      setExistingShares(prev => prev.filter(s => s.recipientId !== recipientId));
+      toast.success('Access removed and file re-encrypted', {
+        description: `Rotated ${rotation.response?.rotatedShareIds.length ?? 0} envelope(s); deactivated ${rotation.response?.revokedLinkIds.length ?? 0} link(s).`,
+      });
     } catch {
       toast.error('Failed to remove access');
     }
-  }, [file.id, file.filename, confirm]);
+  }, [file, confirm, existingShares, getVaultKey]);
 
   return (
     <Dialog open={isOpen} onOpenChange={(v) => !v && onClose()}>
@@ -180,7 +307,14 @@ export default function ShareFileDialog({ file, isOpen, onClose }: ShareFileDial
               <div className="space-y-2 max-h-40 overflow-y-auto">
                 {searchResults.map((user) => (
                   <div key={user.id} className="flex items-center justify-between p-2.5 bg-muted rounded-lg">
-                    <span className="text-sm text-foreground">{user.email}</span>
+                    <div className="min-w-0">
+                      <span className="block text-sm text-foreground truncate">{user.email}</span>
+                      {user.publicKeyFingerprint && (
+                        <span className="block text-xs text-muted-foreground font-mono truncate">
+                          {user.publicKeyFingerprint}
+                        </span>
+                      )}
+                    </div>
                     <Button size="sm" onClick={() => handleShare(user)} disabled={isSharing}>
                       {isSharing ? <Spinner className="size-3" /> : <><UserPlus className="size-3.5 mr-1" /> Share</>}
                     </Button>
@@ -197,7 +331,14 @@ export default function ShareFileDialog({ file, isOpen, onClose }: ShareFileDial
               <div className="space-y-2 max-h-40 overflow-y-auto">
                 {existingShares.map((share) => (
                   <div key={share.recipientId} className="flex items-center justify-between p-2.5 bg-green-500/10 border border-green-500/20 rounded-lg">
-                    <span className="text-sm text-foreground">{share.recipientEmail}</span>
+                    <div className="min-w-0">
+                      <span className="block text-sm text-foreground truncate">{share.recipientEmail}</span>
+                      {share.publicKeyFingerprint && (
+                        <span className="block text-xs text-muted-foreground font-mono truncate">
+                          {share.publicKeyFingerprint}
+                        </span>
+                      )}
+                    </div>
                     <Button
                       variant="ghost"
                       size="sm"

@@ -48,6 +48,7 @@ export * from './authkey';
 
 // Re-export TOTP module
 export * from './totp';
+export * from './link';
 
 /**
  * Prepare registration data for zero-knowledge signup.

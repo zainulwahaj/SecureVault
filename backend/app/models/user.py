@@ -14,7 +14,7 @@ Zero-Knowledge Authentication Model:
 
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, Text, JSON, Boolean
+from sqlalchemy import Column, String, DateTime, Text, JSON, Boolean, Integer, BigInteger
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -87,13 +87,34 @@ class User(Base):
     # Stored as JSON array of hashed codes
     # Plain codes shown once during setup, then only hashes stored
     recovery_codes_hash = Column(JSON, nullable=True)
-    
+
+    # Account-recovery key (separate from MFA recovery codes).
+    # The user generates a long random secret at registration / opt-in.
+    # The VaultKey is wrapped with a KEK derived from that secret + recovery_salt
+    # via PBKDF2. Backend can never derive the secret or unwrap the VaultKey.
+    recovery_enabled = Column(Boolean, default=False, nullable=False)
+    recovery_salt = Column(Text, nullable=True)
+    recovery_kdf_params = Column(JSON, nullable=True)
+    encrypted_vault_key_recovery = Column(JSON, nullable=True)
+
+    # Plan / policy fields. Per-account overrides take precedence over the
+    # plan defaults defined in app.services.policy.
+    plan = Column(String(20), default="free", nullable=False)
+    plan_storage_bytes = Column(BigInteger, nullable=True)
+    plan_max_file_bytes = Column(BigInteger, nullable=True)
+    plan_max_file_count = Column(Integer, nullable=True)
+    plan_max_versions_per_file = Column(Integer, nullable=True)
+    plan_max_links_per_file = Column(Integer, nullable=True)
+    plan_max_link_expiry_days = Column(Integer, nullable=True)
+    plan_max_trash_days = Column(Integer, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # Relationships
     files = relationship("File", back_populates="user", cascade="all, delete-orphan")
     folders = relationship("Folder", back_populates="user", cascade="all, delete-orphan")
+    keys = relationship("UserKey", back_populates="user", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<User {self.email}>"

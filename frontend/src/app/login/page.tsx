@@ -3,74 +3,82 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { ArrowRight, Fingerprint, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import MFAVerification from '@/components/MFAVerification';
-import { Logo, LogoLoader } from '@/components/ui/Logo';
-import { ThemeToggle } from '@/components/ui/ThemeToggle';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Spinner } from '@/components/ui/spinner';
-import { ShieldCheck } from 'lucide-react';
+import { LogoLoader } from '@/components/ui/Logo';
+import { CipherLabAuthShell } from '@/components/auth/CipherLabAuthShell';
+import { FormCard } from '@/components/auth/FormCard';
+import { AuthField } from '@/components/auth/AuthField';
+import { KDFInline } from '@/components/auth/KDFInline';
+import { cn } from '@/lib/utils';
+
+type Stage = 0 | 1 | 2 | 3;
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState('');
+  const [stage, setStage] = useState<Stage>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [status, setStatus] = useState('');
 
-  const { login, user, isAuthenticated, needsUnlock, isLoading, pendingMfa, vaultKey, completeMfaVerification, cancelMfaVerification } = useAuth();
+  const {
+    login,
+    user,
+    isAuthenticated,
+    isLoading,
+    pendingMfa,
+    vaultKey,
+    completeMfaVerification,
+    cancelMfaVerification,
+  } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoading && isAuthenticated) {
-      router.push('/dashboard');
-    }
+    if (!isLoading && isAuthenticated) router.push('/dashboard');
   }, [isAuthenticated, isLoading, router]);
 
   useEffect(() => {
-    if (!isLoading && user && !pendingMfa) {
-      router.push('/dashboard');
-    }
+    if (!isLoading && user && !pendingMfa) router.push('/dashboard');
   }, [user, isLoading, pendingMfa, router]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
-    setStatus('');
+    if (!email || !password) {
+      setError('Please fill in all fields');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
+
     setIsSubmitting(true);
+    setStage(1);
+
+    const deriveTimer = window.setTimeout(() => setStage(2), 900);
 
     try {
-      if (!email || !password) {
-        setError('Please fill in all fields');
-        return;
-      }
-
-      if (password.length < 8) {
-        setError('Password must be at least 8 characters');
-        return;
-      }
-
-      setStatus('Deriving encryption keys...');
-
       const result = await login(email, password);
+      window.clearTimeout(deriveTimer);
 
       if (result.success) {
-        if (result.requiresMfa) {
-          setStatus('');
-        } else {
-          setStatus('Success! Redirecting...');
-          router.push('/dashboard');
+        setStage(3);
+        if (!result.requiresMfa) {
+          window.setTimeout(() => router.push('/dashboard'), 600);
         }
       } else {
+        setStage(0);
         setError(result.error || 'Login failed');
       }
     } catch {
+      window.clearTimeout(deriveTimer);
+      setStage(0);
       setError('An unexpected error occurred');
     } finally {
       setIsSubmitting(false);
-      setStatus('');
     }
   }
 
@@ -81,7 +89,7 @@ export default function LoginPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <LogoLoader />
       </div>
     );
@@ -89,7 +97,7 @@ export default function LoginPage() {
 
   if (pendingMfa && vaultKey) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-background">
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
         <MFAVerification
           vaultKey={vaultKey}
           onSuccess={handleMfaSuccess}
@@ -100,113 +108,112 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen">
-      <div className="flex flex-1 flex-col justify-center px-6 py-12 lg:px-16 xl:px-24">
-        <div className="absolute top-6 left-6">
-          <Link href="/">
-            <Logo size="sm" />
-          </Link>
-        </div>
+    <CipherLabAuthShell mode="login">
+      <FormCard
+        eyebrow="§ AUTH · 01_SIGN_IN"
+        titleLeft="Welcome"
+        italicWord=" back"
+        subtitle="Sign in to unlock your encrypted vault. Your password derives the key locally — we never see it."
+      >
+        <form onSubmit={handleSubmit} className="grid gap-4">
+          <AuthField
+            id="email"
+            label="Email"
+            type="email"
+            value={email}
+            onChange={setEmail}
+            placeholder="you@example.com"
+            autoComplete="email"
+            autoFocus
+            disabled={isSubmitting}
+            monoLabel
+            required
+          />
 
-        <div className="mx-auto w-full max-w-sm">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            Welcome back
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Sign in to access your encrypted vault
-          </p>
-
-          <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="email"
-                disabled={isSubmitting}
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-                disabled={isSubmitting}
-                required
-              />
-            </div>
-
-            {error && (
-              <p className="text-sm text-destructive">{error}</p>
-            )}
-
-            {status && !error && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Spinner className="size-3" />
-                {status}
-              </div>
-            )}
-
-            <Button
-              type="submit"
+          <div>
+            <AuthField
+              id="password"
+              label="Master password"
+              type={showPw ? 'text' : 'password'}
+              value={password}
+              onChange={setPassword}
+              placeholder="enter your master password"
+              autoComplete="current-password"
               disabled={isSubmitting}
-              className="w-full rounded-full"
-              size="lg"
-            >
-              {isSubmitting ? (
-                <span className="flex items-center gap-2">
-                  <Spinner className="size-4" />
-                  Authenticating...
-                </span>
-              ) : (
-                'Sign in'
-              )}
-            </Button>
-          </form>
-
-          <div className="mt-6 flex items-start gap-2">
-            <ShieldCheck className="size-4 text-primary shrink-0 mt-0.5" />
-            <p className="text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">Zero-Knowledge:</span> Your password never leaves this browser.
-            </p>
+              monoLabel
+              monoValue
+              showToggle
+              toggled={showPw}
+              onToggle={() => setShowPw(!showPw)}
+              hint={
+                <Link href="/recover" className="text-primary no-underline hover:underline">
+                  forgot?
+                </Link>
+              }
+              required
+            />
+            <KDFInline password={password} active={stage >= 1} />
           </div>
 
-          <p className="mt-8 text-center text-sm text-muted-foreground">
-            Don&apos;t have an account?{' '}
-            <Link href="/register" className="font-medium text-primary hover:underline">
-              Create one
-            </Link>
-          </p>
-        </div>
-      </div>
+          {error ? (
+            <p className="font-mono text-[12px] text-destructive">! {error}</p>
+          ) : null}
 
-      <div className="relative hidden lg:block lg:flex-1 p-3 pl-0">
-        <div className="absolute top-6 right-6 flex items-center gap-2 z-10">
-          <ThemeToggle />
-          <Link href="/register">
-            <Button variant="secondary" className="rounded-full" size="sm">
-              Create account
-            </Button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className={cn(
+              'a-cta mt-1.5 flex h-[52px] items-center justify-center gap-2.5 rounded-xl text-[15px] font-semibold text-white',
+              stage === 3 ? 'bg-emerald-500' : 'bg-primary',
+              isSubmitting ? 'cursor-progress' : 'cursor-pointer',
+            )}
+            style={{
+              boxShadow: '0 8px 28px oklch(from var(--primary) l c h / 0.35)',
+              border: 'none',
+            }}
+          >
+            {stage === 0 && (
+              <>
+                Unlock vault <ArrowRight size={16} />
+              </>
+            )}
+            {stage === 1 && <>Deriving key (PBKDF2 · 100k)…</>}
+            {stage === 2 && <>Decrypting metadata…</>}
+            {stage === 3 && <>✓ Vault unlocked</>}
+          </button>
+
+          <div className="my-2 grid grid-cols-[1fr_auto_1fr] items-center gap-3.5">
+            <span className="h-px bg-border" />
+            <span className="font-mono text-[11px] tracking-[0.1em] text-muted-foreground/70">
+              OR
+            </span>
+            <span className="h-px bg-border" />
+          </div>
+
+          <button
+            type="button"
+            className="flex h-12 items-center justify-center gap-2.5 rounded-xl border border-border bg-foreground/[0.03] text-[14px] font-medium text-foreground transition-colors hover:bg-foreground/[0.06]"
+          >
+            <Fingerprint size={16} /> Sign in with passkey
+          </button>
+        </form>
+
+        <div className="mt-7 flex items-start gap-3 rounded-xl border border-border bg-foreground/[0.03] px-4 py-3.5">
+          <ShieldCheck size={18} className="mt-0.5 shrink-0 text-primary" />
+          <div className="text-[13px] leading-[1.5] text-muted-foreground">
+            <span className="font-medium text-foreground">Zero-knowledge.</span> Your password
+            never leaves this device. If you forget it, no one — including us — can recover
+            your files.
+          </div>
+        </div>
+
+        <p className="mt-6 text-center text-[14px] text-muted-foreground">
+          New to SecureVault?{' '}
+          <Link href="/register" className="font-medium text-primary hover:underline">
+            Create a vault →
           </Link>
-        </div>
-
-        <div className="relative w-full h-full rounded-2xl overflow-hidden">
-          <img
-            src="/auth-hero.png"
-            alt="SecureVault — your files, always encrypted"
-            className="absolute inset-0 w-full h-full object-cover object-right"
-          />
-        </div>
-      </div>
-    </div>
+        </p>
+      </FormCard>
+    </CipherLabAuthShell>
   );
 }

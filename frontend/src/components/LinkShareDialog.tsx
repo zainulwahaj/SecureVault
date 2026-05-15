@@ -4,18 +4,19 @@
  * LinkShareDialog — Create a shareable link for a file.
  *
  * ZERO-KNOWLEDGE LINK SHARING:
- * 1. Generate a random 32-byte "link key" client-side.
+ * 1. Generate a random 32-byte link secret client-side.
  * 2. Decrypt the FileKey using VaultKey.
- * 3. Re-encrypt the FileKey AND the filename with the link key.
- * 4. Send encrypted blobs + optional password/expiry/limit to backend.
- * 5. Backend returns a token.  We build the URL:
- *      /link#token=<token>&key=<base64url-encoded link key>
+ * 3. Derive the link encryption key from the secret plus optional password.
+ * 4. Re-encrypt the FileKey AND the filename with the link key.
+ * 5. Send encrypted blobs + optional password/expiry/limit to backend.
+ * 6. Backend returns a token. We build the URL:
+ *      /link#token=<token>&key=<base64url-encoded link secret>
  *    The fragment (#) is NEVER sent to the server.
- * 6. Recipient opens the URL → /link page reads fragment, fetches
+ * 7. Recipient opens the URL -> /link page reads fragment, fetches
  *    encrypted data via public API, decrypts with the link key.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
 import type { DecryptedFile, EncryptedBlobData, SharedLinkResponse } from '@/types';
@@ -25,6 +26,7 @@ import { decryptFileKey, encryptFileKey } from '@/lib/crypto/encryption';
 import { encrypt } from '@/lib/crypto/encryption';
 import { initCrypto } from '@/lib/crypto/encryption';
 import { bytesToBase64, base64ToBytes } from '@/lib/crypto/kdf';
+import { deriveLinkKey } from '@/lib/crypto/link';
 import {
   Dialog,
   DialogContent,
@@ -87,9 +89,11 @@ export default function LinkShareDialog({ file, isOpen, onClose }: LinkShareDial
     setLoadedLinks(true);
   }, [file.id, loadedLinks]);
 
-  if (isOpen && !loadedLinks) {
-    loadExistingLinks();
-  }
+  useEffect(() => {
+    if (isOpen && !loadedLinks) {
+      void loadExistingLinks();
+    }
+  }, [isOpen, loadedLinks, loadExistingLinks]);
 
   const toEncryptedBlob = (data: EncryptedBlobData): EncryptedBlob => ({
     ciphertext: data.ciphertext,
@@ -108,8 +112,9 @@ export default function LinkShareDialog({ file, isOpen, onClose }: LinkShareDial
     try {
       await initCrypto();
 
-      const linkKey = new Uint8Array(32);
-      crypto.getRandomValues(linkKey);
+      const linkSecret = new Uint8Array(32);
+      crypto.getRandomValues(linkSecret);
+      const linkKey = await deriveLinkKey(linkSecret, password || undefined);
 
       const fkResult = await decryptFileKey(toEncryptedBlob(file.encryptedFileKey), vaultKey);
       if (!fkResult.success || !fkResult.data) {
@@ -159,7 +164,8 @@ export default function LinkShareDialog({ file, isOpen, onClose }: LinkShareDial
       }
 
       const base = window.location.origin;
-      const url = `${base}/link#token=${res.data.token}&key=${toBase64Url(linkKey)}`;
+      const url = `${base}/link#token=${res.data.token}&key=${toBase64Url(linkSecret)}`;
+      linkSecret.fill(0);
       linkKey.fill(0);
 
       setGeneratedUrl(url);

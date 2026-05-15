@@ -77,7 +77,7 @@ backend/uploads/
 # Alembic
 backend/alembic/versions/*.py
 !backend/alembic/versions/.gitkeep
-!backend/alembic/versions/0001_add_auth_signing_keys.py
+!backend/alembic/versions/*.py
 
 # Misc
 *.pem

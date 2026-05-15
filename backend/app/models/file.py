@@ -59,6 +59,14 @@ class File(Base):
     # Encrypted file size in bytes (actual ciphertext size, not plaintext)
     encrypted_size = Column(Integer, nullable=False)
 
+    # SHA-256 over encrypted bytes. This detects storage corruption without
+    # weakening zero-knowledge content confidentiality.
+    content_sha256 = Column(String(64), nullable=True)
+
+    # Storage mode: single legacy blob or chunked manifest-backed object.
+    storage_mode = Column(String(20), default="single", nullable=False)
+    chunk_manifest = Column(JSON, nullable=True)
+
     # Optional folder (null = root level)
     folder_id = Column(String(36), ForeignKey("folders.id", ondelete="SET NULL"), nullable=True, index=True)
 

@@ -7,6 +7,8 @@ from app.routers.folders import router as folders_router
 from app.routers.health import router as health_router
 from app.routers.audit import router as audit_router
 from app.routers.links import router as links_router
+from app.routers.recovery import router as recovery_router
+from app.routers.webauthn import router as webauthn_router
 
 __all__ = [
     "auth_router",
@@ -17,4 +19,6 @@ __all__ = [
     "health_router",
     "audit_router",
     "links_router",
+    "recovery_router",
+    "webauthn_router",
 ]

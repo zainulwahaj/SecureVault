@@ -19,7 +19,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from redis import Redis
 
 from app.config import get_settings
-from app.database import Base, engine
+from app.services.csrf import csrf_middleware
+from app.services.observability import configure_logging, observability_middleware
 from app.services.session import set_redis
 from app.routers import (
     auth_router,
@@ -30,11 +31,14 @@ from app.routers import (
     health_router,
     audit_router,
     links_router,
+    recovery_router,
+    webauthn_router,
 )
-# Ensure all models are imported so Alembic/create_all sees them
+# Ensure all models are imported so Alembic sees them
 import app.models  # noqa: F401
 
 settings = get_settings()
+configure_logging(settings.DEBUG)
 
 # ---------------------------------------------------------------------------
 # Background task: trash auto-purge
@@ -74,9 +78,7 @@ async def lifespan(app: FastAPI):
     set_redis(redis_client)
     print("✓ Redis connected")
 
-    # Database tables (will be replaced by Alembic in Phase 3)
-    Base.metadata.create_all(bind=engine)
-    print("✓ Database tables ensured")
+    print("✓ Database migrations managed by Alembic")
 
     # Background tasks
     _purge_task = asyncio.create_task(_trash_purge_loop())
@@ -121,6 +123,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.middleware("http")(observability_middleware)
+app.middleware("http")(csrf_middleware)
 
 # Routers
 app.include_router(auth_router, prefix="/api")
@@ -131,6 +135,8 @@ app.include_router(links_router, prefix="/api")
 app.include_router(mfa_router, prefix="/api")
 app.include_router(audit_router, prefix="/api")
 app.include_router(health_router, prefix="/api")
+app.include_router(recovery_router, prefix="/api")
+app.include_router(webauthn_router, prefix="/api")
 
 
 @app.get("/")

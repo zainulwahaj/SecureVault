@@ -3,11 +3,16 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
-import type { SharedFile, DecryptedSharedFile, SharedLinkResponse, EncryptedBlobData } from '@/types';
+import type {
+  DecryptedSharedByMe,
+  DecryptedSharedFile,
+  DecryptedSharedLink,
+  EncryptedBlobData,
+} from '@/types';
 import type { EncryptedBlob } from '@/lib/crypto/types';
 import * as api from '@/lib/api';
 import { decryptFileKeyFromSender, decryptPrivateKey } from '@/lib/crypto/keypair';
-import { decryptFilename, decryptMimeType, decryptFileContent } from '@/lib/crypto/file';
+import { decryptFileKey, decryptFilename, decryptMimeType, decryptFileContentWithManifest } from '@/lib/crypto/file';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -46,6 +51,7 @@ import {
   X,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { PageShell, MonoChip } from '@/components/cipher-lab';
 
 interface SharedFilesViewProps {
   className?: string;
@@ -54,8 +60,8 @@ interface SharedFilesViewProps {
 export default function SharedFilesView({ className = '' }: SharedFilesViewProps) {
   const { getVaultKey, hasVaultKey, user } = useAuth();
   const [sharedWithMe, setSharedWithMe] = useState<DecryptedSharedFile[]>([]);
-  const [sharedByMe, setSharedByMe] = useState<SharedFile[]>([]);
-  const [myLinks, setMyLinks] = useState<SharedLinkResponse[]>([]);
+  const [sharedByMe, setSharedByMe] = useState<DecryptedSharedByMe[]>([]);
+  const [myLinks, setMyLinks] = useState<DecryptedSharedLink[]>([]);
   const [activeTab, setActiveTab] = useState<string>('with-me');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -88,7 +94,10 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
   }, [getVaultKey, keypair]);
 
   const loadSharedWithMe = useCallback(async () => {
-    if (!hasVaultKey) return;
+    if (!hasVaultKey) {
+      setIsLoading(false);
+      return;
+    }
 
     setIsLoading(true);
     setError(null);
@@ -145,7 +154,13 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
               recipientId: file.recipientId,
               recipientEmail: file.recipientEmail,
               sharedAt: file.sharedAt,
+              permission: file.permission,
+              expiresAt: file.expiresAt,
+              revokedAt: file.revokedAt,
+              publicKeyFingerprint: file.publicKeyFingerprint,
               encryptedFileKeyForRecipient: file.encryptedFileKeyForRecipient,
+              storageMode: file.storageMode || 'single',
+              chunkManifest: file.chunkManifest ?? null,
             });
           }
         } catch { /* skip files that fail to decrypt */ }
@@ -161,7 +176,15 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
   }, [hasVaultKey, loadKeypair]);
 
   const loadSharedByMe = useCallback(async () => {
-    if (!hasVaultKey) return;
+    if (!hasVaultKey) {
+      setIsLoading(false);
+      return;
+    }
+    const vaultKey = getVaultKey();
+    if (!vaultKey) {
+      setIsLoading(false);
+      return;
+    }
 
     setIsLoading(true);
     setError(null);
@@ -172,15 +195,48 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
         setError(response.error || 'Failed to load shared files');
         return;
       }
-      setSharedByMe(response.data.shares);
+
+      const decrypted: DecryptedSharedByMe[] = [];
+      for (const share of response.data.shares) {
+        try {
+          if (!share.encryptedFileKeyForOwner) continue;
+          const fileKeyResult = await decryptFileKey(toEncryptedBlob(share.encryptedFileKeyForOwner), vaultKey);
+          if (!fileKeyResult.success || !fileKeyResult.data) continue;
+          const fileKey = fileKeyResult.data;
+
+          const filenameResult = await decryptFilename(toEncryptedBlob(share.encryptedFilename), fileKey);
+          let mimeType = 'application/octet-stream';
+          if (share.encryptedMimeType) {
+            const mimeResult = await decryptMimeType(toEncryptedBlob(share.encryptedMimeType), fileKey);
+            if (mimeResult.success && mimeResult.data) mimeType = mimeResult.data;
+          }
+          fileKey.fill(0);
+
+          if (filenameResult.success && filenameResult.data) {
+            decrypted.push({
+              ...share,
+              filename: filenameResult.data,
+              mimeType,
+              size: share.encryptedSize,
+            });
+          }
+        } catch { /* skip rows that fail local decryption */ }
+      }
+      setSharedByMe(decrypted);
     } catch {
       setError('Failed to load shared files');
     } finally {
       setIsLoading(false);
     }
-  }, [hasVaultKey]);
+  }, [getVaultKey, hasVaultKey]);
 
   const loadMyLinks = useCallback(async () => {
+    const vaultKey = getVaultKey();
+    if (!vaultKey) {
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     try {
@@ -189,13 +245,40 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
         setError(response.error || 'Failed to load shared links');
         return;
       }
-      setMyLinks(response.data.links);
+
+      const decrypted: DecryptedSharedLink[] = [];
+      for (const link of response.data.links) {
+        try {
+          if (!link.encryptedFileKey || !link.encryptedFilename) continue;
+          const fileKeyResult = await decryptFileKey(toEncryptedBlob(link.encryptedFileKey), vaultKey);
+          if (!fileKeyResult.success || !fileKeyResult.data) continue;
+          const fileKey = fileKeyResult.data;
+
+          const filenameResult = await decryptFilename(toEncryptedBlob(link.encryptedFilename), fileKey);
+          let mimeType = 'application/octet-stream';
+          if (link.encryptedMimeType) {
+            const mimeResult = await decryptMimeType(toEncryptedBlob(link.encryptedMimeType), fileKey);
+            if (mimeResult.success && mimeResult.data) mimeType = mimeResult.data;
+          }
+          fileKey.fill(0);
+
+          if (filenameResult.success && filenameResult.data) {
+            decrypted.push({
+              ...link,
+              filename: filenameResult.data,
+              mimeType,
+              size: link.encryptedSize || 0,
+            });
+          }
+        } catch { /* skip rows that fail local decryption */ }
+      }
+      setMyLinks(decrypted);
     } catch {
       setError('Failed to load shared links');
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [getVaultKey]);
 
   useEffect(() => {
     if (activeTab === 'with-me') {
@@ -230,7 +313,11 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
         keypair.privateKey
       );
 
-      const decryptResult = await decryptFileContent(downloadResponse.data, fileKey);
+      const decryptResult = await decryptFileContentWithManifest(
+        downloadResponse.data,
+        fileKey,
+        file.storageMode === 'chunked' ? file.chunkManifest ?? null : null
+      );
       fileKey.fill(0);
 
       if (!decryptResult.success || !decryptResult.data) {
@@ -277,7 +364,7 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
   };
 
   return (
-    <div className={`p-4 sm:p-6 lg:p-8 min-w-0 overflow-hidden ${className}`}>
+    <PageShell className={`p-4 sm:p-6 lg:p-8 min-w-0 overflow-hidden ${className}`}>
       {progress && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
@@ -307,8 +394,27 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
         animate={{ opacity: 1, y: 0 }}
         className="mb-6"
       >
-        <h1 className="text-2xl font-bold text-foreground tracking-tight">Shared Files</h1>
-        <p className="text-sm text-muted-foreground mt-1">Files shared with you and by you</p>
+        <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary mb-3">
+          § VAULT · 03_SHARING
+        </div>
+        <h1 className="text-3xl sm:text-4xl font-medium tracking-[-0.03em] leading-[1.05] text-foreground">
+          Shared
+          <span
+            className="font-normal italic text-primary ml-1"
+            style={{ fontFamily: 'var(--font-serif)' }}
+          >
+            files
+          </span>
+          <span className="text-primary">.</span>
+        </h1>
+        <p className="text-sm text-muted-foreground mt-2 max-w-2xl">
+          Envelope-encrypted with each recipient&apos;s public key. Backend never sees plaintext.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <MonoChip tone="primary">X25519-SEALED-BOX</MonoChip>
+          <MonoChip tone="ok">FINGERPRINT-VERIFIED</MonoChip>
+          <MonoChip>STRONG-REVOCATION</MonoChip>
+        </div>
       </motion.div>
 
       <motion.div
@@ -430,7 +536,9 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
                 <Table>
                   <TableHeader>
                     <TableRow className="hover:bg-transparent bg-muted/30">
-                      <TableHead>Shared with</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead className="hidden sm:table-cell">Shared with</TableHead>
+                      <TableHead className="hidden md:table-cell">Size</TableHead>
                       <TableHead className="hidden sm:table-cell">Date</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -444,12 +552,30 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
                         className="border-b border-border transition-colors hover:bg-muted/50"
                       >
                         <TableCell>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="size-9 rounded-lg bg-muted/80 flex items-center justify-center shrink-0">
+                              {getFileIcon(share.mimeType)}
+                            </div>
+                            <span className="font-medium text-foreground truncate text-sm">{share.filename}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell">
                           <div className="flex items-center gap-2.5">
                             <div className="size-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                               <Send className="size-4 text-primary" />
                             </div>
-                            <span className="text-sm font-medium text-foreground">{share.recipientEmail}</span>
+                            <div className="min-w-0">
+                              <span className="block text-sm font-medium text-foreground truncate">{share.recipientEmail}</span>
+                              {share.publicKeyFingerprint && (
+                                <span className="block text-xs text-muted-foreground font-mono truncate">
+                                  {share.publicKeyFingerprint}
+                                </span>
+                              )}
+                            </div>
                           </div>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell text-muted-foreground text-sm">
+                          {formatSize(share.size)}
                         </TableCell>
                         <TableCell className="hidden sm:table-cell text-muted-foreground text-sm">
                           {new Date(share.sharedAt).toLocaleDateString()}
@@ -502,18 +628,16 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
                         <TableCell>
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="size-9 rounded-lg bg-muted/80 flex items-center justify-center shrink-0">
-                              <Link2 className="size-5 text-primary" />
+                              {getFileIcon(link.mimeType)}
                             </div>
                             <div className="min-w-0">
-                              <p className="text-sm font-medium text-foreground truncate font-mono">
-                                ...{link.token.slice(-12)}
-                              </p>
+                              <p className="text-sm font-medium text-foreground truncate">{link.filename}</p>
                               <div className="flex items-center gap-1.5 mt-0.5">
                                 {link.passwordProtected && (
                                   <Lock className="size-3 text-amber-500" />
                                 )}
                                 <span className="text-xs text-muted-foreground">
-                                  File: {link.fileId.slice(0, 8)}...
+                                  {formatSize(link.size)} · ...{link.token.slice(-12)}
                                 </span>
                               </div>
                             </div>
@@ -537,10 +661,11 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
                               variant="ghost"
                               size="icon-sm"
                               onClick={() => {
-                                const url = `${window.location.origin}/link#token=${link.token}`;
-                                navigator.clipboard.writeText(url);
-                                toast.success('Link copied to clipboard');
+                                toast.info('Full link cannot be recovered', {
+                                  description: 'Create a new link to copy it again.',
+                                });
                               }}
+                              title="Full link cannot be recovered"
                             >
                               <Copy className="size-4" />
                             </Button>
@@ -573,6 +698,6 @@ export default function SharedFilesView({ className = '' }: SharedFilesViewProps
           </TabsContent>
         </Tabs>
       </motion.div>
-    </div>
+    </PageShell>
   );
 }

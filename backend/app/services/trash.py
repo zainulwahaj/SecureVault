@@ -52,14 +52,26 @@ class TrashService:
     async def permanent_delete(self, file: File) -> Tuple[bool, Optional[str]]:
         """Permanently delete a trashed file (storage + versions + DB)."""
         try:
-            # Remove version files
+            # Remove retained version objects.
             for v in list(file.versions):
-                parts = v.storage_path.split("/", 1)
-                if len(parts) == 2:
-                    await self.storage.delete_file(parts[0], parts[1])
+                if getattr(v, "storage_mode", "single") == "chunked" and v.chunk_manifest:
+                    for part in v.chunk_manifest.get("parts", []):
+                        pieces = part.get("storagePath", "").split("/", 1)
+                        if len(pieces) == 2:
+                            await self.storage.delete_file(pieces[0], pieces[1])
+                else:
+                    parts = v.storage_path.split("/", 1)
+                    if len(parts) == 2:
+                        await self.storage.delete_file(parts[0], parts[1])
 
-            # Remove the main file blob
-            await self.storage.delete_file(file.user_id, file.id)
+            # Remove the main file blob or chunk objects.
+            if getattr(file, "storage_mode", "single") == "chunked" and file.chunk_manifest:
+                for part in file.chunk_manifest.get("parts", []):
+                    pieces = part.get("storagePath", "").split("/", 1)
+                    if len(pieces) == 2:
+                        await self.storage.delete_file(pieces[0], pieces[1])
+            else:
+                await self.storage.delete_file(file.user_id, file.id)
 
             self.db.delete(file)
             self.db.commit()
@@ -69,22 +81,39 @@ class TrashService:
             return False, str(e)
 
     async def auto_purge(self) -> int:
-        """Permanently delete files trashed longer than TRASH_RETENTION_DAYS.
+        """Permanently delete trashed files past each user's retention policy.
 
-        Called periodically by the background loop in main.py.
-        Returns number of purged files.
+        Per-account retention can differ via the plan layer, so we evaluate
+        the cutoff per file rather than globally.
         """
-        cutoff = datetime.now(timezone.utc) - timedelta(days=settings.TRASH_RETENTION_DAYS)
-        expired = (
+        from app.services.policy import policy_for
+        now = datetime.now(timezone.utc)
+        # Evaluate against the most generous policy as a coarse filter so we
+        # don't scan every soft-deleted row, then check each candidate exactly.
+        max_retention_days = max(
+            (policy_for(file.user).max_trash_days for file in
+             self.db.query(File).filter(File.deleted_at.isnot(None)).all()),
+            default=settings.TRASH_RETENTION_DAYS,
+        )
+        coarse_cutoff = now - timedelta(days=max_retention_days)
+        candidates = (
             self.db.query(File)
             .filter(
                 File.deleted_at.isnot(None),
-                File.deleted_at < cutoff,
+                File.deleted_at < coarse_cutoff,
             )
             .all()
         )
         count = 0
-        for file in expired:
+        for file in candidates:
+            retention_days = policy_for(file.user).max_trash_days or settings.TRASH_RETENTION_DAYS
+            deleted_at = file.deleted_at
+            if deleted_at is None:
+                continue
+            if deleted_at.tzinfo is None:
+                deleted_at = deleted_at.replace(tzinfo=timezone.utc)
+            if deleted_at >= now - timedelta(days=retention_days):
+                continue
             ok, _ = await self.permanent_delete(file)
             if ok:
                 count += 1

@@ -1,42 +1,22 @@
 'use client';
 
-import { useState, type FormEvent, useMemo } from 'react';
+import { useState, useMemo, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { ArrowRight, ShieldCheck, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { Logo } from '@/components/ui/Logo';
-import { ThemeToggle } from '@/components/ui/ThemeToggle';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Progress } from '@/components/ui/progress';
-import { Spinner } from '@/components/ui/spinner';
-import {
-  ShieldCheck,
-  AlertTriangle,
-  Check,
-  X,
-} from 'lucide-react';
-
-function getPasswordStrength(password: string): { score: number; label: string; color: string } {
-  let score = 0;
-  if (password.length >= 8) score++;
-  if (password.length >= 12) score++;
-  if (/[a-z]/.test(password) && /[A-Z]/.test(password)) score++;
-  if (/[0-9]/.test(password)) score++;
-  if (/[^a-zA-Z0-9]/.test(password)) score++;
-
-  if (score <= 1) return { score: 20, label: 'Weak', color: 'text-red-500' };
-  if (score === 2) return { score: 40, label: 'Fair', color: 'text-amber-500' };
-  if (score === 3) return { score: 60, label: 'Good', color: 'text-blue-500' };
-  if (score === 4) return { score: 80, label: 'Strong', color: 'text-green-500' };
-  return { score: 100, label: 'Excellent', color: 'text-green-500' };
-}
+import { CipherLabAuthShell } from '@/components/auth/CipherLabAuthShell';
+import { FormCard } from '@/components/auth/FormCard';
+import { AuthField } from '@/components/auth/AuthField';
+import { PasswordStrengthPanel } from '@/components/auth/PasswordStrengthPanel';
+import { CalloutLine } from '@/components/auth/CalloutLine';
+import { evaluatePassword } from '@/lib/auth/passwordStrength';
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -44,205 +24,155 @@ export default function RegisterPage() {
   const { register } = useAuth();
   const router = useRouter();
 
-  const passwordStrength = useMemo(() => getPasswordStrength(password), [password]);
-  const passwordsMatch = password && confirmPassword && password === confirmPassword;
-  const passwordsDontMatch = password && confirmPassword && password !== confirmPassword;
+  const ev = useMemo(() => evaluatePassword(password), [password]);
+  const matchErr = confirm && confirm !== password ? 'Passwords do not match' : '';
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
     setStatus('');
+
+    if (!email || !password || !confirm) {
+      setError('Please fill in all fields');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
+    if (password !== confirm) {
+      setError('Passwords do not match');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError('Please enter a valid email address');
+      return;
+    }
+
     setIsSubmitting(true);
+    setStatus('Generating encryption keys…');
 
     try {
-      if (!email || !password || !confirmPassword) {
-        setError('Please fill in all fields');
-        return;
-      }
-      if (password.length < 8) {
-        setError('Password must be at least 8 characters');
-        return;
-      }
-      if (password !== confirmPassword) {
-        setError('Passwords do not match');
-        return;
-      }
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        setError('Please enter a valid email address');
-        return;
-      }
-
-      setStatus('Generating encryption keys...');
-
       const result = await register(email, password);
-
       if (result.success) {
-        setStatus('Success! Redirecting...');
+        setStatus('Success — redirecting…');
         router.push('/dashboard');
       } else {
         setError(result.error || 'Registration failed');
+        setStatus('');
       }
     } catch {
       setError('An unexpected error occurred');
+      setStatus('');
     } finally {
       setIsSubmitting(false);
-      setStatus('');
     }
   }
 
   return (
-    <div className="flex min-h-screen">
-      <div className="flex flex-1 flex-col justify-center px-6 py-12 lg:px-16 xl:px-24">
-        <div className="absolute top-6 left-6">
-          <Link href="/">
-            <Logo size="sm" />
-          </Link>
-        </div>
+    <CipherLabAuthShell mode="register">
+      <FormCard
+        eyebrow="§ AUTH · 02_CREATE_VAULT"
+        titleLeft="Forge your"
+        italicWord=" vault"
+        subtitle="Sixty seconds, one password, no recovery email. Your password is the only key — choose well."
+      >
+        <form onSubmit={handleSubmit} className="grid gap-4">
+          <AuthField
+            id="email"
+            label="Email"
+            type="email"
+            value={email}
+            onChange={setEmail}
+            placeholder="you@example.com"
+            autoComplete="email"
+            autoFocus
+            disabled={isSubmitting}
+            monoLabel
+            required
+          />
 
-        <div className="mx-auto w-full max-w-sm">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            Create your vault
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Set up your secure encrypted storage
-          </p>
-
-          <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="email"
-                disabled={isSubmitting}
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="password">Master Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Create a strong password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="new-password"
-                disabled={isSubmitting}
-                required
-              />
-              {password && (
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Strength</span>
-                    <span className={`font-medium ${passwordStrength.color}`}>
-                      {passwordStrength.label}
-                    </span>
-                  </div>
-                  <Progress value={passwordStrength.score} className="h-1" />
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="confirm">Confirm Password</Label>
-              <div className="relative">
-                <Input
-                  id="confirm"
-                  type="password"
-                  placeholder="Confirm your password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  autoComplete="new-password"
-                  disabled={isSubmitting}
-                  required
-                />
-                {passwordsMatch && (
-                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-green-500" />
-                )}
-                {passwordsDontMatch && (
-                  <X className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-red-500" />
-                )}
-              </div>
-              {passwordsDontMatch && (
-                <p className="text-xs text-destructive">Passwords do not match</p>
-              )}
-            </div>
-
-            {error && (
-              <p className="text-sm text-destructive">{error}</p>
-            )}
-
-            {status && !error && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Spinner className="size-3" />
-                {status}
-              </div>
-            )}
-
-            <Button
-              type="submit"
-              disabled={isSubmitting || !!passwordsDontMatch}
-              className="w-full rounded-full"
-              size="lg"
-            >
-              {isSubmitting ? (
-                <span className="flex items-center gap-2">
-                  <Spinner className="size-4" />
-                  Creating Vault...
-                </span>
-              ) : (
-                'Create account'
-              )}
-            </Button>
-          </form>
-
-          <div className="mt-6 space-y-3">
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="size-4 text-amber-500 shrink-0 mt-0.5" />
-              <p className="text-xs text-muted-foreground">
-                <span className="font-medium text-foreground">Important:</span> If you forget your password, your data cannot be recovered.
-              </p>
-            </div>
-            <div className="flex items-start gap-2">
-              <ShieldCheck className="size-4 text-primary shrink-0 mt-0.5" />
-              <p className="text-xs text-muted-foreground">
-                <span className="font-medium text-foreground">Zero-Knowledge:</span> All encryption happens locally in your browser.
-              </p>
-            </div>
+          <div>
+            <AuthField
+              id="password"
+              label="Master password"
+              type={showPw ? 'text' : 'password'}
+              value={password}
+              onChange={setPassword}
+              placeholder="choose a long, memorable phrase"
+              autoComplete="new-password"
+              disabled={isSubmitting}
+              monoLabel
+              monoValue
+              showToggle
+              toggled={showPw}
+              onToggle={() => setShowPw(!showPw)}
+              required
+            />
+            <PasswordStrengthPanel password={password} ev={ev} />
           </div>
 
-          <p className="mt-8 text-center text-sm text-muted-foreground">
-            Already have an account?{' '}
-            <Link href="/login" className="font-medium text-primary hover:underline">
-              Sign in
-            </Link>
-          </p>
-        </div>
-      </div>
-
-      <div className="relative hidden lg:block lg:flex-1 p-3 pl-0">
-        <div className="absolute top-6 right-6 flex items-center gap-2 z-10">
-          <ThemeToggle />
-          <Link href="/login">
-            <Button variant="secondary" className="rounded-full" size="sm">
-              Log in
-            </Button>
-          </Link>
-        </div>
-
-        <div className="relative w-full h-full rounded-2xl overflow-hidden">
-          <img
-            src="/auth-hero.png"
-            alt="SecureVault — your files, always encrypted"
-            className="absolute inset-0 w-full h-full object-cover object-right"
+          <AuthField
+            id="confirm"
+            label="Confirm password"
+            type="password"
+            value={confirm}
+            onChange={setConfirm}
+            placeholder="type it again"
+            autoComplete="new-password"
+            disabled={isSubmitting}
+            monoLabel
+            monoValue
+            error={matchErr}
+            hint={
+              confirm && !matchErr ? (
+                <span className="text-emerald-500">✓ matches</span>
+              ) : null
+            }
+            required
           />
+
+          {error ? (
+            <p className="font-mono text-[12px] text-destructive">! {error}</p>
+          ) : null}
+
+          {status && !error ? (
+            <p className="font-mono text-[12px] text-muted-foreground">⟳ {status}</p>
+          ) : null}
+
+          <button
+            type="submit"
+            disabled={isSubmitting || !!matchErr}
+            className="a-cta mt-1.5 flex h-[52px] cursor-pointer items-center justify-center gap-2.5 rounded-xl bg-primary text-[15px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
+            style={{
+              boxShadow: '0 8px 28px oklch(from var(--primary) l c h / 0.35)',
+              border: 'none',
+            }}
+          >
+            {isSubmitting ? 'Creating vault…' : 'Create encrypted vault'}
+            {!isSubmitting && <ArrowRight size={16} />}
+          </button>
+        </form>
+
+        <div className="mt-6 grid gap-2.5">
+          <CalloutLine icon={<ShieldCheck size={16} />}>
+            <b className="text-foreground">Zero-knowledge:</b> all encryption happens in this
+            browser.
+          </CalloutLine>
+          <CalloutLine icon={<X size={16} />} tone="danger">
+            <b className="text-foreground">No recovery:</b> forget your password and your
+            data is gone forever.
+          </CalloutLine>
         </div>
-      </div>
-    </div>
+
+        <p className="mt-6 text-center text-[14px] text-muted-foreground">
+          Already have a vault?{' '}
+          <Link href="/login" className="font-medium text-primary hover:underline">
+            Sign in →
+          </Link>
+        </p>
+      </FormCard>
+    </CipherLabAuthShell>
   );
 }

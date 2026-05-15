@@ -1,8 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { verifyMFA, getMFASecret } from '@/lib/api';
+import { verifyMFA, getMFASecret, webauthnAuthBegin, webauthnAuthComplete } from '@/lib/api';
 import { decryptMFASecret, verifyTOTPCode } from '@/lib/crypto';
+import {
+  getWebAuthnAssertion,
+  serializeAssertion,
+  webauthnAvailable,
+} from '@/lib/auth/webauthn';
+import { Fingerprint } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -158,6 +164,44 @@ export default function MFAVerification({ vaultKey, onSuccess, onCancel }: MFAVe
                 : 'Use a recovery code instead'}
             </button>
           </div>
+
+          {webauthnAvailable() && (
+            <Button
+              variant="outline"
+              type="button"
+              disabled={loading}
+              onClick={async () => {
+                setError(null);
+                setLoading(true);
+                try {
+                  const begin = await webauthnAuthBegin();
+                  if (!begin.success || !begin.data) {
+                    setError(begin.error || 'No passkey registered');
+                    return;
+                  }
+                  const credential = await getWebAuthnAssertion(
+                    begin.data.options as Parameters<typeof getWebAuthnAssertion>[0],
+                  );
+                  const complete = await webauthnAuthComplete({
+                    challengeId: begin.data.challengeId,
+                    credential: serializeAssertion(credential),
+                  });
+                  if (!complete.success) {
+                    setError(complete.error || 'Passkey verification failed');
+                    return;
+                  }
+                  onSuccess();
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : 'Passkey cancelled');
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              className="w-full"
+            >
+              <Fingerprint className="size-4 mr-2" /> Verify with passkey
+            </Button>
+          )}
 
           {onCancel && (
             <Button

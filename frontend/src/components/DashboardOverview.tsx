@@ -38,6 +38,7 @@ import {
   Lock,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { PageHeader, MonoChip, PageShell } from '@/components/cipher-lab';
 
 interface DashboardOverviewProps {
   onNavigate: (view: string) => void;
@@ -187,7 +188,7 @@ export default function DashboardOverview({ onNavigate, storageUsed, fileCount }
   })) : [];
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 min-w-0 overflow-hidden">
+    <PageShell className="p-4 sm:p-6 lg:p-8 min-w-0 overflow-hidden">
       <motion.div
         variants={containerVariants}
         initial="hidden"
@@ -195,12 +196,19 @@ export default function DashboardOverview({ onNavigate, storageUsed, fileCount }
         className="space-y-6"
       >
         <motion.div variants={itemVariants}>
-          <h1 className="text-2xl font-bold text-foreground tracking-tight">
-            Welcome back, <span className="capitalize">{username}</span>
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Here&apos;s what&apos;s happening in your vault today.
-          </p>
+          <PageHeader
+            eyebrow="§ VAULT · 01_OVERVIEW"
+            title={`Welcome back, ${username}`}
+            italicWord="."
+            subtitle="Encrypted client-side. Decrypted only on your devices. Here's the current state of your vault."
+            trailing={
+              <div className="flex flex-wrap items-center gap-2">
+                <MonoChip tone="primary">XChaCha20-Poly1305</MonoChip>
+                <MonoChip tone="ok">ZERO-KNOWLEDGE</MonoChip>
+                <MonoChip>CLIENT-SIDE</MonoChip>
+              </div>
+            }
+          />
         </motion.div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -476,6 +484,6 @@ export default function DashboardOverview({ onNavigate, storageUsed, fileCount }
           </Card>
         </motion.div>
       </motion.div>
-    </div>
+    </PageShell>
   );
 }

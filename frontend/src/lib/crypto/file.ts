@@ -18,8 +18,14 @@
 import sodium from 'libsodium-wrappers';
 import type { EncryptedBlob, CryptoResult, FileKey, VaultKey } from './types';
 import { CRYPTO_CONSTANTS } from './types';
-import { bytesToBase64, base64ToBytes, clearSensitiveData } from './kdf';
+import { clearSensitiveData } from './kdf';
 import { initCrypto, encrypt, decrypt, encryptFileKey, decryptFileKey } from './encryption';
+import {
+  workerEncryptChunk,
+  workerDecryptChunk,
+  workerDecryptManifest,
+  shouldUseWorker,
+} from './workerClient';
 
 // Re-export these for convenience
 export { encryptFileKey, decryptFileKey } from './encryption';
@@ -57,8 +63,6 @@ export async function encryptFileContent(
   fileKey: FileKey
 ): Promise<CryptoResult<Uint8Array>> {
   try {
-    await initCrypto();
-    
     // Validate key
     if (fileKey.length !== CRYPTO_CONSTANTS.KEY_LENGTH) {
       return {
@@ -66,20 +70,22 @@ export async function encryptFileContent(
         error: `FileKey must be ${CRYPTO_CONSTANTS.KEY_LENGTH} bytes`,
       };
     }
-    
-    // Generate random nonce (24 bytes for XChaCha20)
+
+    // Offload large payloads to the Web Worker so the UI thread stays responsive.
+    if (shouldUseWorker(content.length)) {
+      const workerResult = await workerEncryptChunk(content, fileKey);
+      if (workerResult.success) return workerResult;
+      // Fall back to inline crypto if the worker is unavailable.
+    }
+
+    await initCrypto();
     const nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
-    
-    // Encrypt content
     const ciphertext = sodium.crypto_secretbox_easy(content, nonce, fileKey);
-    
-    // Combine nonce + ciphertext
     const combined = new Uint8Array(nonce.length + ciphertext.length);
     combined.set(nonce);
     combined.set(ciphertext, nonce.length);
-    
     return { success: true, data: combined };
-    
+
   } catch (error) {
     return {
       success: false,
@@ -100,17 +106,20 @@ export async function decryptFileContent(
   fileKey: FileKey
 ): Promise<CryptoResult<Uint8Array>> {
   try {
-    await initCrypto();
-    
-    // Validate key
     if (fileKey.length !== CRYPTO_CONSTANTS.KEY_LENGTH) {
       return {
         success: false,
         error: `FileKey must be ${CRYPTO_CONSTANTS.KEY_LENGTH} bytes`,
       };
     }
-    
-    // Extract nonce and ciphertext
+
+    if (shouldUseWorker(encryptedContent.length)) {
+      const workerResult = await workerDecryptChunk(encryptedContent, fileKey);
+      if (workerResult.success) return workerResult;
+      // Fall through to inline path on worker failure.
+    }
+
+    await initCrypto();
     const nonceLength = sodium.crypto_secretbox_NONCEBYTES;
     if (encryptedContent.length < nonceLength + sodium.crypto_secretbox_MACBYTES) {
       return {
@@ -118,16 +127,12 @@ export async function decryptFileContent(
         error: 'Invalid encrypted content: too short',
       };
     }
-    
     const nonce = encryptedContent.slice(0, nonceLength);
     const ciphertext = encryptedContent.slice(nonceLength);
-    
-    // Decrypt and verify
     const plaintext = sodium.crypto_secretbox_open_easy(ciphertext, nonce, fileKey);
-    
     return { success: true, data: plaintext };
-    
-  } catch (error) {
+
+  } catch {
     return {
       success: false,
       error: 'File decryption failed - invalid key or corrupted data',
@@ -211,6 +216,28 @@ export interface EncryptedFileData {
   encryptedMimeType: EncryptedBlob;
 }
 
+export interface ChunkedFileUploadContext {
+  fileKey: FileKey;
+  encryptedFileKey: EncryptedBlob;
+  encryptedFilename: EncryptedBlob;
+  encryptedMimeType: EncryptedBlob;
+}
+
+export interface ChunkManifestPart {
+  partNumber: number;
+  encryptedSize: number;
+  encryptedSha256?: string;
+  plainSize?: number;
+}
+
+export interface ChunkManifest {
+  storageMode?: string;
+  chunkSize?: number;
+  totalParts?: number;
+  encryptedSize?: number;
+  parts: ChunkManifestPart[];
+}
+
 /**
  * Prepare a file for encrypted upload.
  * 
@@ -230,6 +257,37 @@ export interface EncryptedFileData {
  * @param vaultKey - User's VaultKey (from session)
  * @returns Encrypted data ready for upload
  */
+export async function prepareChunkedFileForUpload(
+  file: File,
+  vaultKey: VaultKey
+): Promise<CryptoResult<ChunkedFileUploadContext>> {
+  try {
+    await initCrypto();
+    const fileKey = generateFileKey();
+
+    const keyResult = await encryptFileKey(fileKey, vaultKey);
+    if (!keyResult.success || !keyResult.data) return { success: false, error: keyResult.error };
+
+    const filenameResult = await encryptMetadata(file.name, fileKey);
+    if (!filenameResult.success || !filenameResult.data) return { success: false, error: filenameResult.error };
+
+    const mimeResult = await encryptMetadata(file.type || 'application/octet-stream', fileKey);
+    if (!mimeResult.success || !mimeResult.data) return { success: false, error: mimeResult.error };
+
+    return {
+      success: true,
+      data: {
+        fileKey,
+        encryptedFileKey: keyResult.data,
+        encryptedFilename: filenameResult.data,
+        encryptedMimeType: mimeResult.data,
+      },
+    };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to prepare chunked upload' };
+  }
+}
+
 export async function prepareFileForUpload(
   file: File,
   vaultKey: VaultKey
@@ -369,10 +427,65 @@ export async function decryptFileMetadata(
  * @param vaultKey - User's VaultKey
  * @returns Decrypted file content
  */
+export async function decryptFileContentWithManifest(
+  encryptedContent: Uint8Array,
+  fileKey: FileKey,
+  manifest?: ChunkManifest | null
+): Promise<CryptoResult<Uint8Array>> {
+  if (!manifest || manifest.storageMode !== 'chunked') {
+    return decryptFileContent(encryptedContent, fileKey);
+  }
+
+  // Hand the whole manifest to the worker in one shot when possible.
+  if (shouldUseWorker(encryptedContent.length) && Array.isArray(manifest.parts)) {
+    const workerResult = await workerDecryptManifest(
+      encryptedContent,
+      fileKey,
+      manifest.parts.map((p) => ({ encryptedSize: p.encryptedSize })),
+    );
+    if (workerResult.success) return workerResult;
+  }
+
+  try {
+    const plaintextParts: Uint8Array[] = [];
+    let offset = 0;
+    for (const part of manifest.parts || []) {
+      const encryptedSize = part.encryptedSize;
+      if (!Number.isFinite(encryptedSize) || encryptedSize <= 0) {
+        return { success: false, error: 'Invalid chunk manifest' };
+      }
+      const end = offset + encryptedSize;
+      if (end > encryptedContent.length) {
+        return { success: false, error: 'Chunk manifest exceeds encrypted content length' };
+      }
+      const decrypted = await decryptFileContent(encryptedContent.slice(offset, end), fileKey);
+      if (!decrypted.success || !decrypted.data) {
+        return { success: false, error: decrypted.error || 'Chunk decryption failed' };
+      }
+      plaintextParts.push(decrypted.data);
+      offset = end;
+    }
+    if (offset !== encryptedContent.length) {
+      return { success: false, error: 'Encrypted content has bytes outside the chunk manifest' };
+    }
+    const total = plaintextParts.reduce((sum, part) => sum + part.length, 0);
+    const combined = new Uint8Array(total);
+    let writeOffset = 0;
+    for (const part of plaintextParts) {
+      combined.set(part, writeOffset);
+      writeOffset += part.length;
+    }
+    return { success: true, data: combined };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Chunked file decryption failed' };
+  }
+}
+
 export async function decryptDownloadedFile(
   encryptedContent: Uint8Array,
   encryptedFileKey: EncryptedBlob,
-  vaultKey: VaultKey
+  vaultKey: VaultKey,
+  manifest?: ChunkManifest | null
 ): Promise<CryptoResult<Uint8Array>> {
   let fileKey: FileKey | null = null;
   
@@ -387,7 +500,7 @@ export async function decryptDownloadedFile(
     fileKey = keyResult.data;
     
     // Step 2: Decrypt file content with FileKey
-    const contentResult = await decryptFileContent(encryptedContent, fileKey);
+    const contentResult = await decryptFileContentWithManifest(encryptedContent, fileKey, manifest);
     if (!contentResult.success || !contentResult.data) {
       return { success: false, error: contentResult.error };
     }

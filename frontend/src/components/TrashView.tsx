@@ -45,6 +45,7 @@ import {
   MoreHorizontal,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { PageShell, MonoChip } from '@/components/cipher-lab';
 
 export default function TrashView() {
   const { getVaultKey, hasVaultKey } = useAuth();
@@ -161,16 +162,32 @@ export default function TrashView() {
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 min-w-0 overflow-hidden">
+    <PageShell className="p-4 sm:p-6 lg:p-8 min-w-0 overflow-hidden">
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         className="mb-6"
       >
-        <h1 className="text-2xl font-bold text-foreground tracking-tight">Trash</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Files are permanently deleted after 30 days
+        <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary mb-3">
+          § VAULT · 04_TRASH
+        </div>
+        <h1 className="text-3xl sm:text-4xl font-medium tracking-[-0.03em] leading-[1.05] text-foreground">
+          Soft-deleted
+          <span
+            className="font-normal italic text-primary ml-1"
+            style={{ fontFamily: 'var(--font-serif)' }}
+          >
+            artifacts
+          </span>
+          <span className="text-primary">.</span>
+        </h1>
+        <p className="text-sm text-muted-foreground mt-2 max-w-2xl">
+          Auto-purge runs on a per-account retention policy. Files here can still be restored.
         </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <MonoChip tone="danger">PURGE-PENDING</MonoChip>
+          <MonoChip>POLICY-DRIVEN</MonoChip>
+        </div>
       </motion.div>
 
       {isLoading ? (
@@ -261,6 +278,6 @@ export default function TrashView() {
           </Table>
         </motion.div>
       )}
-    </div>
+    </PageShell>
   );
 }

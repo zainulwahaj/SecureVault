@@ -15,6 +15,7 @@ from typing import Optional, Tuple, Dict, Any
 from sqlalchemy.orm import Session as DBSession
 from app.models.user import User
 from app.services.auth_crypto import verify_login_signature
+from app.services.key_directory import KeyDirectoryService
 from app.services.session import SessionService, SessionData, get_redis
 
 
@@ -56,6 +57,8 @@ class AuthService:
         encrypted_private_key: str,
         auth_public_key: str,
         encrypted_auth_private_key: Dict[str, Any],
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
     ) -> Tuple[Optional[User], Optional[SessionData], Optional[str]]:
         """
         Register a new user with zero-knowledge authentication.
@@ -85,9 +88,15 @@ class AuthService:
         self.db.add(user)
         self.db.commit()
         self.db.refresh(user)
+        KeyDirectoryService(self.db).ensure_sharing_key(user)
         
         # Create session
-        session = self.session_service.create_session(user, auth_level="full")
+        session = self.session_service.create_session(
+            user,
+            auth_level="full",
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
         
         return user, session, None
     
@@ -143,6 +152,8 @@ class AuthService:
         challenge_id: Optional[str] = None,
         signature: Optional[str] = None,
         proof: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
     ) -> Tuple[Optional[User], Optional[SessionData], Optional[str]]:
         """
         Verify login by checking the decryption proof.
@@ -192,7 +203,12 @@ class AuthService:
         # Proof matches - client successfully decrypted VaultKey
         # Create session
         auth_level = "pending_mfa" if user.mfa_enabled and user.server_mfa_secret else "full"
-        session = self.session_service.create_session(user, auth_level=auth_level)
+        session = self.session_service.create_session(
+            user,
+            auth_level=auth_level,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
         
         return user, session, None
     

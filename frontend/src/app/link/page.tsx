@@ -3,11 +3,11 @@
 /**
  * Public Link Download Page
  *
- * URL format:  /link#token=<token>&key=<base64url link key>
+ * URL format:  /link#token=<token>&key=<base64url link secret>
  *
  * ZERO-KNOWLEDGE:
  * - The fragment (#) is never sent to the server.
- * - The link key is used client-side to decrypt the FileKey and filename.
+ * - The link key is derived client-side to decrypt the FileKey and filename.
  * - If the link is password-protected, the user must enter the password
  *   (verified by bcrypt on the server) before downloading.
  */
@@ -18,6 +18,8 @@ import { decrypt } from '@/lib/crypto/encryption';
 import { decryptFileKey } from '@/lib/crypto/encryption';
 import { initCrypto } from '@/lib/crypto/encryption';
 import { base64ToBytes } from '@/lib/crypto/kdf';
+import { deriveLinkKey } from '@/lib/crypto/link';
+import { decryptFileContentWithManifest } from '@/lib/crypto/file';
 import type { EncryptedBlob } from '@/lib/crypto/types';
 import type { SharedLinkPublicInfo, EncryptedBlobData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -33,11 +35,24 @@ function fromBase64Url(s: string): Uint8Array {
   return base64ToBytes(b64);
 }
 
+type ReadyLinkInfo = SharedLinkPublicInfo & {
+  encryptedFilename: EncryptedBlobData;
+  encryptedFileKey: EncryptedBlobData;
+};
+
 type PageState =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
-  | { kind: 'password'; info: SharedLinkPublicInfo; linkKey: Uint8Array }
-  | { kind: 'ready'; filename: string; linkKey: Uint8Array; token: string; info: SharedLinkPublicInfo }
+  | { kind: 'password'; info: SharedLinkPublicInfo; linkSecret: Uint8Array }
+  | {
+      kind: 'ready';
+      filename: string;
+      linkKey: Uint8Array;
+      linkSecret: Uint8Array;
+      token: string;
+      info: ReadyLinkInfo;
+      downloadTicket?: string | null;
+    }
   | { kind: 'downloading' }
   | { kind: 'done'; filename: string };
 
@@ -73,7 +88,7 @@ export default function LinkPage() {
           return;
         }
 
-        const linkKey = fromBase64Url(keyParam);
+        const linkSecret = fromBase64Url(keyParam);
 
         const res = await api.getLinkInfo(token);
         if (!res.success || !res.data) {
@@ -84,12 +99,29 @@ export default function LinkPage() {
         const info = res.data;
 
         if (info.passwordRequired) {
-          setState({ kind: 'password', info, linkKey });
+          setState({ kind: 'password', info, linkSecret });
           return;
         }
 
+        if (!info.encryptedFilename || !info.encryptedFileKey) {
+          setState({ kind: 'error', message: 'Link metadata is incomplete.' });
+          return;
+        }
+
+        const linkKey = await deriveLinkKey(linkSecret);
         const filename = await decryptFilename(info.encryptedFilename, linkKey);
-        setState({ kind: 'ready', filename, linkKey, token, info });
+        setState({
+          kind: 'ready',
+          filename,
+          linkKey,
+          linkSecret,
+          token,
+          info: {
+            ...info,
+            encryptedFilename: info.encryptedFilename,
+            encryptedFileKey: info.encryptedFileKey,
+          },
+        });
       } catch {
         setState({ kind: 'error', message: 'Failed to process link.' });
       }
@@ -103,13 +135,47 @@ export default function LinkPage() {
 
     try {
       const res = await api.verifyLinkPassword(state.info.token, password);
-      if (!res.success || !res.data?.valid) {
+      if (!res.success) {
+        setPasswordError(res.error || 'Verification failed.');
+        setVerifying(false);
+        return;
+      }
+      if (!res.data?.valid) {
         setPasswordError('Incorrect password.');
         setVerifying(false);
         return;
       }
-      const filename = await decryptFilename(state.info.encryptedFilename, state.linkKey);
-      setState({ kind: 'ready', filename, linkKey: state.linkKey, token: state.info.token, info: state.info });
+      if (!res.data.encryptedFilename || !res.data.encryptedFileKey) {
+        setPasswordError('Link metadata is incomplete.');
+        setVerifying(false);
+        return;
+      }
+
+      let linkKey = await deriveLinkKey(state.linkSecret, password);
+      let filename: string;
+      try {
+        filename = await decryptFilename(res.data.encryptedFilename, linkKey);
+      } catch {
+        linkKey.fill(0);
+        linkKey = state.linkSecret.slice();
+        filename = await decryptFilename(res.data.encryptedFilename, linkKey);
+      }
+
+      setState({
+        kind: 'ready',
+        filename,
+        linkKey,
+        linkSecret: state.linkSecret,
+        token: state.info.token,
+        info: {
+          ...state.info,
+          encryptedFilename: res.data.encryptedFilename,
+          encryptedFileKey: res.data.encryptedFileKey,
+          storageMode: res.data.storageMode,
+          chunkManifest: res.data.chunkManifest,
+        },
+        downloadTicket: res.data.downloadTicket || null,
+      });
     } catch {
       setPasswordError('Verification failed.');
     } finally {
@@ -120,28 +186,37 @@ export default function LinkPage() {
   const handleDownload = useCallback(async () => {
     if (state.kind !== 'ready') return;
     setState({ kind: 'downloading' });
+    let fileKey: Uint8Array | null = null;
 
     try {
       const fkResult = await decryptFileKey(toBlob(state.info.encryptedFileKey), state.linkKey);
       if (!fkResult.success || !fkResult.data) throw new Error('Failed to decrypt file key');
+      fileKey = fkResult.data;
 
-      const dlRes = await api.downloadViaLink(state.token);
-      if (!dlRes.success || !dlRes.data) throw new Error(dlRes.error || 'Download failed');
+      const dlRes = await api.downloadViaLink(state.token, state.downloadTicket);
+      if (!dlRes.success || !dlRes.data) {
+        fileKey.fill(0);
+        fileKey = null;
+        if (state.info.passwordRequired && /ticket/i.test(dlRes.error || '')) {
+          setPassword('');
+          setPasswordError('Enter the password again to download.');
+          setState({ kind: 'password', info: { ...state.info, encryptedFileKey: null }, linkSecret: state.linkSecret });
+          return;
+        }
+        throw new Error(dlRes.error || 'Download failed');
+      }
 
-      const fileKey = fkResult.data;
-      const encryptedContent = dlRes.data;
-
-      const sodium = (await import('libsodium-wrappers')).default;
-      await sodium.ready;
-
-      const nonceLen = sodium.crypto_secretbox_NONCEBYTES;
-      const nonce = encryptedContent.slice(0, nonceLen);
-      const ciphertext = encryptedContent.slice(nonceLen);
-      const decryptedContent = sodium.crypto_secretbox_open_easy(ciphertext, nonce, fileKey);
+      const decrypted = await decryptFileContentWithManifest(
+        dlRes.data,
+        fileKey,
+        state.info.storageMode === 'chunked' ? state.info.chunkManifest ?? null : null
+      );
+      if (!decrypted.success || !decrypted.data) throw new Error(decrypted.error || 'Failed to decrypt file');
 
       fileKey.fill(0);
+      fileKey = null;
 
-      const blob = new Blob([new Uint8Array(decryptedContent)]);
+      const blob = new Blob([new Uint8Array(decrypted.data)]);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -153,6 +228,7 @@ export default function LinkPage() {
 
       setState({ kind: 'done', filename: state.filename });
     } catch (err) {
+      if (fileKey) fileKey.fill(0);
       setState({ kind: 'error', message: err instanceof Error ? err.message : 'Download failed.' });
     }
   }, [state]);

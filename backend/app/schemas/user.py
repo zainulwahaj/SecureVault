@@ -173,6 +173,56 @@ class UpdateAuthKeyRequest(BaseModel):
     )
 
 
+
+
+class CsrfTokenResponse(BaseModel):
+    """CSRF token for cookie-authenticated unsafe requests."""
+    csrfToken: str
+
+
+class SessionDeviceItem(BaseModel):
+    """Safe active-session metadata for the security settings UI."""
+    sessionIdHash: str
+    authLevel: str
+    createdAt: datetime | None = None
+    lastSeenAt: datetime | None = None
+    mfaVerifiedAt: datetime | None = None
+    ipAddress: str | None = None
+    userAgent: str | None = None
+    current: bool = False
+
+    @classmethod
+    def from_session(cls, session):
+        def parse_dt(value):
+            if not value:
+                return None
+            return datetime.fromisoformat(value)
+
+        return cls(
+            sessionIdHash=session.session_id_hash,
+            authLevel=session.auth_level,
+            createdAt=parse_dt(session.created_at),
+            lastSeenAt=parse_dt(session.last_seen_at),
+            mfaVerifiedAt=parse_dt(session.mfa_verified_at),
+            ipAddress=session.ip_address,
+            userAgent=session.user_agent,
+            current=session.current,
+        )
+
+
+class SessionListResponse(BaseModel):
+    sessions: list[SessionDeviceItem]
+    totalCount: int
+
+
+class RevokeSessionsRequest(BaseModel):
+    keepCurrent: bool = True
+
+
+class RevokeSessionsResponse(BaseModel):
+    revokedCount: int
+
+
 class SessionResponse(BaseModel):
     """Response after successful login/registration"""
     user: UserResponse

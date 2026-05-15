@@ -8,6 +8,13 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Badge } from '@/components/ui/badge';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Empty,
   EmptyHeader,
   EmptyMedia,
@@ -26,15 +33,21 @@ import {
   Trash2,
   LogIn,
   Key,
+  Fingerprint,
+  ShieldAlert,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { PageShell, MonoChip } from '@/components/cipher-lab';
 
 const PAGE_SIZE = 20;
 
 const ACTION_CONFIG: Record<string, { label: string; icon: typeof FileIcon; color: string; bg: string }> = {
   'file.upload': { label: 'File uploaded', icon: FileIcon, color: 'text-primary', bg: 'bg-primary/10' },
   'file.download': { label: 'File downloaded', icon: FileIcon, color: 'text-blue-500', bg: 'bg-blue-500/10' },
+  'file.version.download': { label: 'Version downloaded', icon: FileIcon, color: 'text-blue-500', bg: 'bg-blue-500/10' },
+  'file.replace': { label: 'File replaced', icon: FileIcon, color: 'text-amber-500', bg: 'bg-amber-500/10' },
   'file.delete': { label: 'File deleted', icon: Trash2, color: 'text-destructive', bg: 'bg-destructive/10' },
+  'file.trash': { label: 'File moved to trash', icon: Trash2, color: 'text-destructive', bg: 'bg-destructive/10' },
   'file.restore': { label: 'File restored', icon: FileIcon, color: 'text-green-500', bg: 'bg-green-500/10' },
   'file.move': { label: 'File moved', icon: FileIcon, color: 'text-amber-500', bg: 'bg-amber-500/10' },
   'folder.create': { label: 'Folder created', icon: FolderIcon, color: 'text-primary', bg: 'bg-primary/10' },
@@ -45,20 +58,34 @@ const ACTION_CONFIG: Record<string, { label: string; icon: typeof FileIcon; colo
   'share.revoke': { label: 'Share revoked', icon: Share2, color: 'text-destructive', bg: 'bg-destructive/10' },
   'link.create': { label: 'Link created', icon: Share2, color: 'text-purple-500', bg: 'bg-purple-500/10' },
   'link.revoke': { label: 'Link revoked', icon: Share2, color: 'text-destructive', bg: 'bg-destructive/10' },
+  'link.download': { label: 'Link downloaded', icon: Share2, color: 'text-blue-500', bg: 'bg-blue-500/10' },
+  'link.password.verify': { label: 'Link password checked', icon: Key, color: 'text-amber-500', bg: 'bg-amber-500/10' },
+  'auth.register': { label: 'Account created', icon: LogIn, color: 'text-green-500', bg: 'bg-green-500/10' },
   'auth.login': { label: 'Logged in', icon: LogIn, color: 'text-green-500', bg: 'bg-green-500/10' },
   'auth.logout': { label: 'Logged out', icon: LogIn, color: 'text-muted-foreground', bg: 'bg-muted' },
+  'auth.password.change': { label: 'Password changed', icon: Key, color: 'text-amber-500', bg: 'bg-amber-500/10' },
+  'auth.key.upgrade': { label: 'Auth key upgraded', icon: Key, color: 'text-green-500', bg: 'bg-green-500/10' },
   'mfa.enable': { label: 'MFA enabled', icon: ShieldCheck, color: 'text-green-500', bg: 'bg-green-500/10' },
   'mfa.disable': { label: 'MFA disabled', icon: ShieldCheck, color: 'text-destructive', bg: 'bg-destructive/10' },
   'mfa.verify': { label: 'MFA verified', icon: Key, color: 'text-green-500', bg: 'bg-green-500/10' },
+  'mfa.recovery': { label: 'Recovery code used', icon: Key, color: 'text-amber-500', bg: 'bg-amber-500/10' },
+  'mfa.recovery.failed': { label: 'Recovery code failed', icon: ShieldAlert, color: 'text-destructive', bg: 'bg-destructive/10' },
+  'sharing.key.update': { label: 'Sharing key updated', icon: Fingerprint, color: 'text-green-500', bg: 'bg-green-500/10' },
+  'user.profile.update': { label: 'Profile updated', icon: ClipboardList, color: 'text-muted-foreground', bg: 'bg-muted' },
 };
 
 function getActionConfig(action: string) {
-  return ACTION_CONFIG[action] ?? {
-    label: action.replace('.', ' '),
+  const normalized = normalizeAction(action);
+  return ACTION_CONFIG[normalized] ?? {
+    label: normalized.replaceAll('.', ' '),
     icon: ClipboardList,
     color: 'text-muted-foreground',
     bg: 'bg-muted',
   };
+}
+
+function normalizeAction(action: string): string {
+  return action.replaceAll('_', '.');
 }
 
 function formatTime(iso: string): string {
@@ -75,16 +102,32 @@ function formatTime(iso: string): string {
   return d.toLocaleDateString();
 }
 
+function shortHash(value?: string | null): string {
+  return value ? value.slice(0, 10) : 'unsealed';
+}
+
+function outcomeVariant(outcome: string): 'destructive' | 'outline' {
+  return outcome === 'failure' ? 'destructive' : 'outline';
+}
+
 export default function ActivityLog() {
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [offset, setOffset] = useState(0);
+  const [outcomeFilter, setOutcomeFilter] = useState('all');
+  const [resourceFilter, setResourceFilter] = useState('all');
+  const [integrity, setIntegrity] = useState<{ valid: boolean; checkedCount: number } | null>(null);
 
   const loadActivity = useCallback(async (pageOffset: number) => {
     setIsLoading(true);
     try {
-      const result = await api.listAuditLog({ limit: PAGE_SIZE, offset: pageOffset });
+      const result = await api.listAuditLog({
+        limit: PAGE_SIZE,
+        offset: pageOffset,
+        outcome: outcomeFilter === 'all' ? undefined : outcomeFilter,
+        resourceType: resourceFilter === 'all' ? undefined : resourceFilter,
+      });
       if (result.success && result.data) {
         setEntries(result.data.entries);
         setTotalCount(result.data.totalCount);
@@ -96,36 +139,114 @@ export default function ActivityLog() {
     } finally {
       setIsLoading(false);
     }
+  }, [outcomeFilter, resourceFilter]);
+
+  const loadIntegrity = useCallback(async () => {
+    const result = await api.verifyAuditIntegrity();
+    if (result.success && result.data) {
+      setIntegrity({ valid: result.data.valid, checkedCount: result.data.checkedCount });
+    }
   }, []);
 
   useEffect(() => {
     loadActivity(offset);
   }, [loadActivity, offset]);
 
+  useEffect(() => {
+    loadIntegrity();
+  }, [loadIntegrity]);
+
+  useEffect(() => {
+    setOffset(0);
+  }, [outcomeFilter, resourceFilter]);
+
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
   const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 min-w-0 overflow-hidden">
+    <PageShell className="p-4 sm:p-6 lg:p-8 min-w-0 overflow-hidden">
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between mb-6"
+        className="flex items-end justify-between mb-6 gap-4 flex-wrap"
       >
         <div>
-          <h1 className="text-2xl font-bold text-foreground tracking-tight">Activity</h1>
-          <p className="text-sm text-muted-foreground mt-1">Recent activity in your vault</p>
+          <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary mb-3">
+            § VAULT · 05_AUDIT
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-medium tracking-[-0.03em] leading-[1.05] text-foreground">
+            Activity
+            <span
+              className="font-normal italic text-primary ml-1"
+              style={{ fontFamily: 'var(--font-serif)' }}
+            >
+              log
+            </span>
+            <span className="text-primary">.</span>
+          </h1>
+          <p className="text-sm text-muted-foreground mt-2 max-w-2xl">
+            Every entry is sealed into a hash chain. Tampering breaks the chain — verifiable below.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <MonoChip tone="primary">HASH-CHAINED</MonoChip>
+            <MonoChip tone="ok">TAMPER-EVIDENT</MonoChip>
+            <MonoChip>SHA-256</MonoChip>
+          </div>
         </div>
         <Button
           variant="outline"
           size="icon-sm"
-          onClick={() => loadActivity(offset)}
+          onClick={() => {
+            loadActivity(offset);
+            loadIntegrity();
+          }}
           disabled={isLoading}
           className="shrink-0"
         >
           <RefreshCw className={`size-3.5 ${isLoading ? 'animate-spin' : ''}`} />
         </Button>
       </motion.div>
+
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={outcomeFilter} onValueChange={(value) => setOutcomeFilter(String(value))}>
+            <SelectTrigger size="sm" className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All outcomes</SelectItem>
+              <SelectItem value="success">Success</SelectItem>
+              <SelectItem value="failure">Failure</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={resourceFilter} onValueChange={(value) => setResourceFilter(String(value))}>
+            <SelectTrigger size="sm" className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All resources</SelectItem>
+              <SelectItem value="file">Files</SelectItem>
+              <SelectItem value="folder">Folders</SelectItem>
+              <SelectItem value="share">Shares</SelectItem>
+              <SelectItem value="link">Links</SelectItem>
+              <SelectItem value="session">Sessions</SelectItem>
+              <SelectItem value="user">Account</SelectItem>
+              <SelectItem value="user_key">Keys</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {integrity && (
+          <Badge
+            variant={integrity.valid ? 'outline' : 'destructive'}
+            className="h-7 max-w-full justify-start gap-1.5 px-2.5 font-normal"
+          >
+            <Fingerprint className="size-3.5" />
+            <span className="truncate">
+              {integrity.valid ? `Hash chain sealed (${integrity.checkedCount})` : 'Hash chain mismatch'}
+            </span>
+          </Badge>
+        )}
+      </div>
 
       {isLoading && entries.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
@@ -165,16 +286,22 @@ export default function ActivityLog() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-foreground">{config.label}</p>
-                    {entry.resourceType && (
-                      <p className="text-xs text-muted-foreground truncate mt-0.5">
-                        {entry.resourceType}
-                        {entry.resourceId ? ` · ${entry.resourceId.slice(0, 8)}...` : ''}
-                      </p>
-                    )}
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">
+                      {entry.resourceType ? entry.resourceType : entry.category}
+                      {entry.sequenceNumber ? ` #${entry.sequenceNumber}` : ''}
+                      {entry.resourceId ? ` · ${entry.resourceId.slice(0, 8)}...` : ''}
+                      {` · hash ${shortHash(entry.eventHash)}`}
+                      {entry.requestId ? ` · req ${entry.requestId.slice(0, 8)}` : ''}
+                    </p>
                   </div>
-                  <Badge variant="outline" className="shrink-0 text-xs font-normal text-muted-foreground">
-                    {formatTime(entry.createdAt)}
-                  </Badge>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <Badge variant={outcomeVariant(entry.outcome)} className="text-xs font-normal">
+                      {entry.outcome}
+                    </Badge>
+                    <Badge variant="outline" className="text-xs font-normal text-muted-foreground">
+                      {formatTime(entry.createdAt)}
+                    </Badge>
+                  </div>
                 </motion.div>
               );
             })}
@@ -211,6 +338,6 @@ export default function ActivityLog() {
           )}
         </motion.div>
       )}
-    </div>
+    </PageShell>
   );
 }

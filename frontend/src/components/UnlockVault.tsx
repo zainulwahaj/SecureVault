@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { Logo } from '@/components/ui/Logo';
+import { Shield } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -70,8 +70,24 @@ export default function UnlockVault({ onUnlocked }: UnlockVaultProps) {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <header className="px-6 py-4 flex items-center justify-between">
-        <Logo size="sm" />
-        <ThemeToggle />
+        <div className="flex items-center gap-2.5">
+          <div
+            className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-primary-foreground"
+            style={{ boxShadow: '0 0 20px oklch(from var(--primary) l c h / 0.35)' }}
+          >
+            <Shield size={16} strokeWidth={2.2} />
+          </div>
+          <div className="font-mono text-[14px] font-semibold tracking-[-0.02em]">
+            secure<span className="text-primary">vault</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground/80">
+          <span className="hidden sm:flex items-center gap-1.5">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 a-pulse" />
+            TLS 1.3
+          </span>
+          <ThemeToggle />
+        </div>
       </header>
 
       <main className="flex-1 flex items-center justify-center p-4">

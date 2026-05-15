@@ -27,6 +27,11 @@ class FileVersion(Base):
     # Encrypted file size in bytes
     encrypted_size = Column(Integer, nullable=False)
 
+    # SHA-256 over encrypted bytes for retained version integrity checks
+    content_sha256 = Column(String(64), nullable=True)
+    storage_mode = Column(String(20), default="single", nullable=False)
+    chunk_manifest = Column(JSON, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships
